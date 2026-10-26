@@ -8,7 +8,6 @@ from datetime import datetime
 from PIL import Image
 import io
 from streamlit_drawable_canvas import st_canvas
-from streamlit_cookies_controller import CookieController
 import streamlit.components.v1 as components
 
 # ---------------- 0. 页面配置与 CSS 隐藏官方杂项 ----------------
@@ -80,7 +79,6 @@ footer {visibility: hidden;}
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-cookie_controller = CookieController()
 DATA_FILE = "family_data.json"
 
 # ---------------- 1. 核心数据读写与 GitHub API 同步 ----------------
@@ -156,7 +154,7 @@ pets = {
     "bubu": {
         "name": "布布", 
         "img": "bubu.jpeg", 
-        "desc": "我是精灵·布布！性格温顺又粘人，是大家的贴心小棉袄，最喜欢在阳光下懒洋洋地睡大觉。💤",
+        "desc": "我是精灵·布布！性格温顺又粘인，是大家的贴心小棉袄，最喜欢在阳光下懒洋洋地睡大觉。💤",
         "quotes": {
             "2026-10-26": "阳光暖洋洋的，布布在沙发上找到了最舒服的睡觉姿势~ ☀️",
             "2026-10-25": "今天布布有乖乖看家哦，求夸奖！🥰",
@@ -175,15 +173,36 @@ pets = {
     }
 }
 
-# ---------------- 2. 严格的登录态隔离校验 ----------------
+# ---------------- 2. 严格的 sessionStorage 标签页隔离逻辑 ----------------
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
-cookie_user = cookie_controller.get("family_auth_token")
+# 核心安全桥接脚本：
+# 1. 如果当前标签页的 sessionStorage 有记录，F5 刷新时自动静默带参数恢复。
+# 2. 如果是复制网址到新浏览器/新标签页（sessionStorage 为空），脚本检测到后会立刻剥离参数，强制打回登录页！
+session_guard_js = """
+<script>
+    const savedUser = sessionStorage.getItem("family_strict_user");
+    const urlParams = new URLSearchParams(window.parent.location.search);
+    const urlToken = urlParams.get("token");
 
-# 校验 Cookie 中的用户是否合法
-if cookie_user in users and not st.session_state.logged_in_user:
-    st.session_state.logged_in_user = cookie_user
+    if (savedUser && !urlToken) {
+        // 当前标签页按 F5 刷新：自动在后台补全凭证重载，不掉登录
+        const sep = window.parent.location.search ? "&" : "?";
+        window.parent.location.href = window.parent.location.href + sep + "token=" + savedUser;
+    } else if (!savedUser && urlToken) {
+        // 复制网址到新浏览器/新标签页（本地没有缓存）：立刻剥离凭证，强行拦截要求重新登录！
+        window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
+    }
+</script>
+"""
+components.html(session_guard_js, height=0)
+
+query_params = st.query_params
+url_token_user = query_params.get("token", None)
+
+if url_token_user in users and not st.session_state.logged_in_user:
+    st.session_state.logged_in_user = url_token_user
 
 current_user = st.session_state.logged_in_user
 
@@ -208,18 +227,15 @@ if not current_user:
             if submit:
                 if username_input in users and users[username_input]["pass"] == password_input:
                     st.session_state.logged_in_user = username_input
-                    # 关键：设置 Cookie（不设 max_age，使其跟随浏览器会话，并在前端强制刷新跳转）
-                    cookie_controller.set("family_auth_token", username_input)
                     
-                    # 前端强制重定向，确保 Cookie 立即生效并隔离
-                    login_redirect_js = """
+                    # 登录成功：写入当前标签页的 sessionStorage 并带参重载
+                    login_js = f"""
                     <script>
-                        setTimeout(function() {
-                            window.parent.location.reload();
-                        }, 300);
+                        sessionStorage.setItem("family_strict_user", "{username_input}");
+                        window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?token={username_input}";
                     </script>
                     """
-                    components.html(login_redirect_js, height=0)
+                    components.html(login_js, height=0)
                     st.success("登录成功！正在进入...")
                     st.rerun()
                 else:
@@ -288,22 +304,19 @@ with st.sidebar:
 
     st.markdown("---")
     if st.button("🔄 刷新并同步数据", type="primary", use_container_width=True):
+        st.query_params["token"] = current_user
         st.toast("已成功从云端仓库同步最新状态！", icon="✅")
         st.rerun()
 
     if st.button("🚪 退出登录", use_container_width=True):
-        cookie_controller.remove("family_auth_token")
-        st.session_state.logged_in_user = None
-        
-        # 退出后强制重定向清空状态
-        logout_redirect_js = """
+        logout_js = """
         <script>
-            setTimeout(function() {
-                window.parent.location.reload();
-            }, 300);
+            sessionStorage.removeItem("family_strict_user");
+            window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
         </script>
         """
-        components.html(logout_redirect_js, height=0)
+        components.html(logout_js, height=0)
+        st.session_state.logged_in_user = None
         st.rerun()
 
 # --- 精灵弹窗 ---
@@ -485,7 +498,7 @@ with right_col:
     if st.button("保存并发送画作 💌", use_container_width=True):
         if canvas_result.image_data is not None:
             img_arr = canvas_result.image_data
-            img = Image.fromarray(img_arr.astype('uint8'), 'RGBA').convert('RGB')
+            img = Image.fromarray(img_arr.astype('uint8'), 'RGB').convert('RGB')
             buffered = io.BytesIO()
             img.save(buffered, format="JPEG")
             img_str = "data:image/jpeg;base64," + base64.b64encode(buffered.getvalue()).decode()
