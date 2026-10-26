@@ -10,45 +10,48 @@ from streamlit_drawable_canvas import st_canvas
 # 页面基础配置
 st.set_page_config(page_title="温馨家庭系统", page_icon="🏡", layout="wide")
 
-# 注入温馨粉色主题与左右悬浮宠物 CSS
+# 注入温馨粉色主题与悬浮精灵 CSS
 st.markdown("""
     <style>
         .stApp { background-color: #fff9fa; }
+        
         .side-decoration {
             position: fixed;
             top: 50%;
             transform: translateY(-50%);
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 15px;
             align-items: center;
             z-index: 999;
         }
-        .left-side { left: 20px; }
-        .right-side { right: 20px; }
+        .left-side { left: 15px; }
+        .right-side { right: 15px; }
         .side-pet-box {
             text-align: center;
             background: white;
             padding: 8px;
-            border-radius: 50%;
+            border-radius: 16px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             border: 2px solid #ffe6eb;
+            width: 100px;
         }
         .side-pet {
-            width: 70px;
-            height: 70px;
+            width: 80px;
+            height: 80px;
             border-radius: 50%;
             object-fit: cover;
             border: 3px solid #ff7b93;
             display: block;
+            margin: 0 auto;
         }
         .pet-name {
-            font-size: 0.75rem;
-            color: #777777;
+            font-size: 0.8rem;
+            color: #ff5c8a;
             font-weight: bold;
-            margin-top: 4px;
+            margin-top: 5px;
         }
-        @media (max-width: 1200px) { .side-decoration { display: none; } }
+        @media (max-width: 1300px) { .side-decoration { display: none; } }
 
         .custom-header {
             background: white;
@@ -103,11 +106,10 @@ users = {
     "meimei": {"name": "妹妹", "role": "妹妹", "birthday": "01-09", "emoji": "👧", "pass": "meimei123456"}
 }
 
-# 宠物详细档案（支持点击弹窗展示照片和介绍）
 pets = {
-    "lulu": {"name": "噜噜", "img": "lulu.jpeg", "desc": "我是噜噜！家里最活泼的小可爱，每天负责卖萌和迎接大家回家，最喜欢吃好吃的零食！🐾"},
-    "bubu": {"name": "布布", "img": "bubu.jpeg", "desc": "我是布布！性格温顺又粘人，是大家的贴心小棉袄，最喜欢在阳光下懒洋洋地睡大觉。💤"},
-    "yier": {"name": "一二", "img": "yier.jpeg", "desc": "我是一二！行事雷厉风行，是家庭里的快乐源泉，每天都在元气满满地巡视领地！⚡"}
+    "lulu": {"name": "噜噜", "img": "lulu.jpeg", "desc": "我是精灵·噜噜！家里最活泼的小可爱，每天负责卖萌和迎接大家回家，最喜欢吃好吃的零食！✨"},
+    "bubu": {"name": "布布", "img": "bubu.jpeg", "desc": "我是精灵·布布！性格温顺又粘人，是大家的贴心小棉袄，最喜欢在阳光下懒洋洋地睡大觉。💤"},
+    "yier": {"name": "一二", "img": "yier.jpeg", "desc": "我是一二精灵！行事雷厉风行，是家庭里的快乐源泉，每天都在元气满满地巡视领地！⚡"}
 }
 
 if "logged_in_user" not in st.session_state:
@@ -115,6 +117,9 @@ if "logged_in_user" not in st.session_state:
 
 if "selected_pet" not in st.session_state:
     st.session_state.selected_pet = None
+
+if "canvas_reset_counter" not in st.session_state:
+    st.session_state.canvas_reset_counter = 0
 
 data = load_data()
 
@@ -135,67 +140,57 @@ else:
     current_user = st.session_state.logged_in_user
     user_info = users[current_user]
 
-    # --- 宠物点击弹窗（当点击左侧或右侧宠物时触发） ---
+    # --- 精灵点击弹窗 ---
     if st.session_state.selected_pet:
         p_key = st.session_state.selected_pet
         p_info = pets[p_key]
-        st.markdown(f"""
-            <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; justify-content: center; align-items: center;">
-                <div style="background: white; padding: 30px; border-radius: 20px; text-align: center; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
-                    <h2>🐾 {p_info['name']} 的专属档案</h2>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
         
-        # 使用 Streamlit 原生弹窗组件展示图片与介绍
-        @st.dialog(f"🐾 宠物档案：{p_info['name']}")
+        @st.dialog(f"✨ 精灵档案：{p_info['name']}")
         def pet_dialog():
             if os.path.exists(p_info["img"]):
-                st.image(p_info["img"], width=200)
+                st.image(p_info["img"], width=250)
             st.write(p_info["desc"])
             if st.button("关闭档案"):
                 st.session_state.selected_pet = None
                 st.rerun()
         pet_dialog()
 
-    # --- 渲染左右两侧悬浮宠物（可点击） ---
+    # --- 渲染左右两侧固定展示的精灵图片 ---
     lulu_b64 = base64.b64encode(open(pets["lulu"]["img"], "rb").read()).decode() if os.path.exists(pets["lulu"]["img"]) else ""
     bubu_b64 = base64.b64encode(open(pets["bubu"]["img"], "rb").read()).decode() if os.path.exists(pets["bubu"]["img"]) else ""
     yier_b64 = base64.b64encode(open(pets["yier"]["img"], "rb").read()).decode() if os.path.exists(pets["yier"]["img"]) else ""
 
-    # 使用 Streamlit 按钮包装宠物头像实现点击事件
-    with st.sidebar:
-        st.markdown("### 🐾 宠物互动专区")
-        st.caption("点击下方宠物查看详细档案：")
-        if st.button("🐾 查看 噜噜"):
-            st.session_state.selected_pet = "lulu"
-            st.rerun()
-        if st.button("🐾 查看 布布"):
-            st.session_state.selected_pet = "bubu"
-            st.rerun()
-        if st.button("🐾 查看 一二"):
-            st.session_state.selected_pet = "yier"
-            st.rerun()
-
-    # 悬浮头像展示（页面两侧）
     st.markdown(f"""
         <div class="side-decoration left-side">
             <div class="side-pet-box">
                 <img src="data:image/jpeg;base64,{lulu_b64}" class="side-pet">
-                <div class="pet-name">噜噜</div>
+                <div class="pet-name">✨ 噜噜</div>
             </div>
             <div class="side-pet-box">
                 <img src="data:image/jpeg;base64,{bubu_b64}" class="side-pet">
-                <div class="pet-name">布布</div>
+                <div class="pet-name">✨ 布布</div>
             </div>
         </div>
         <div class="side-decoration right-side">
             <div class="side-pet-box">
                 <img src="data:image/jpeg;base64,{yier_b64}" class="side-pet">
-                <div class="pet-name">一二</div>
+                <div class="pet-name">✨ 一二</div>
             </div>
         </div>
     """, unsafe_allow_html=True)
+
+    with st.sidebar:
+        st.markdown("### 🌟 家庭守护精灵")
+        st.caption("点击下方按钮查看精灵档案：")
+        if st.button("✨ 查看 噜噜档案"):
+            st.session_state.selected_pet = "lulu"
+            st.rerun()
+        if st.button("✨ 查看 布布档案"):
+            st.session_state.selected_pet = "bubu"
+            st.rerun()
+        if st.button("✨ 查看 一二档案"):
+            st.session_state.selected_pet = "yier"
+            st.rerun()
 
     # --- 顶部 Header ---
     col_top1, col_top2, col_top3 = st.columns([6, 2, 1])
@@ -243,24 +238,43 @@ else:
 
         st.write("")
 
-        # 3. 💬 家庭留言板（新增功能）
-        st.markdown("### 💬 全家留言板")
-        new_msg = st.text_input("写下你想对家人说的话...", key="msg_input")
-        if st.button("发布留言"):
-            if new_msg.strip():
-                if "messages" not in data:
-                    data["messages"] = []
-                data["messages"].insert(0, {
-                    "id": int(datetime.now().timestamp() * 1000),
-                    "sender": user_info["name"],
-                    "text": new_msg,
-                    "time": datetime.now().strftime("%m-%d %H:%M")
-                })
-                save_data(data)
-                st.success("留言发表成功！")
-                st.rerun()
+        # 3. 💬 家庭留言板（支持选单个人、多个人或全家人）
+        st.markdown("### 💬 家庭留言板")
         
-        # 展示留言
+        # 接收对象选择方式
+        target_mode = st.radio("发送给谁？", ["全家人 (公开)", "指定家人"], horizontal=True)
+        selected_targets = []
+        if target_mode == "指定家人":
+            st.caption("可单选或多选：")
+            cols_t = st.columns(4)
+            for idx, (u_k, u_v) in enumerate(users.items()):
+                if cols_t[idx].checkbox(u_v["name"], key=f"target_{u_k}"):
+                    selected_targets.append(u_v["name"])
+
+        new_msg = st.text_input("写下你想说的话...", key="msg_input")
+        if st.button("发布留言 📢"):
+            if new_msg.strip():
+                if target_mode == "指定家人" and not selected_targets:
+                    st.warning("请至少勾选一位接收对象！")
+                else:
+                    if "messages" not in data:
+                        data["messages"] = []
+                    
+                    target_str = "全家人 🌍" if target_mode == "️全家人 (公开)" or not selected_targets else " @".join(selected_targets)
+                    if target_mode == "指定家人":
+                        target_str = " @ " + target_str
+
+                    data["messages"].insert(0, {
+                        "id": int(datetime.now().timestamp() * 1000),
+                        "sender": user_info["name"],
+                        "target": target_str,
+                        "text": new_msg,
+                        "time": datetime.now().strftime("%m-%d %H:%M")
+                    })
+                    save_data(data)
+                    st.success("留言发表成功！")
+                    st.rerun()
+        
         messages = data.get("messages", [])
         if not messages:
             st.caption("暂无留言，快来抢沙发吧~")
@@ -268,17 +282,17 @@ else:
             for msg in messages:
                 st.markdown(f"""
                     <div style="background: white; padding: 10px 15px; border-radius: 10px; margin-bottom: 8px; border-left: 4px solid #ff7b93; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
-                        <b>{msg['sender']}</b> <span style="font-size: 0.75rem; color: #999; float: right;">{msg['time']}</span><br>
-                        <span style="color: #333; font-size: 0.95rem;">{msg['text']}</span>
+                        <b>{msg['sender']}</b> <span style="color: #ff5c8a; font-size: 0.85rem;">(to: {msg.get('target', '全家人 🌍')})</span>
+                        <span style="font-size: 0.75rem; color: #999; float: right;">{msg['time']}</span><br>
+                        <span style="color: #333; font-size: 0.95rem; margin-top: 5px; display: block;">{msg['text']}</span>
                     </div>
                 """, unsafe_allow_html=True)
 
     with right_col:
-        # 4. 家庭涂鸦与赠送板（加大尺寸并增加清除按钮）
+        # 4. 家庭涂鸦与赠送板（带大号清除按钮）
         st.markdown("### 🎨 家庭涂鸦与赠送板")
         stroke_color = st.color_picker("画笔颜色", "#ff7b93")
         
-        # 画布尺寸加大 (宽 450, 高 240)
         canvas_result = st_canvas(
             fill_color="rgba(255, 255, 255, 0)",
             stroke_width=4,
@@ -287,23 +301,22 @@ else:
             height=240,
             width=450,
             drawing_mode="freedraw",
-            key="canvas",
+            key=f"canvas_{st.session_state.canvas_reset_counter}",
         )
         
-        bc1, bc2 = st.columns([1, 1])
-        with bc1:
-            # 清除按钮提示
-            st.caption("💡 如果画错可以在上方重新绘制")
-        with bc2:
-            pass
-
-        recipient = st.selectbox("选择发送对象", [
-            ("all", "公开到全家相册 🌍"),
-            ("baba", "赠送给：爸爸 👨"),
-            ("mama", "赠送给：妈妈 👩"),
-            ("erzi", "赠送给：儿子 👦"),
-            ("meimei", "赠送给：妹妹 👧")
-        ], format_func=lambda x: x[1])
+        col_btn1, col_btn2 = st.columns([1, 2])
+        with col_btn1:
+            if st.button("🗑️ 清除重画", use_container_width=True):
+                st.session_state.canvas_reset_counter += 1
+                st.rerun()
+        with col_btn2:
+            recipient = st.selectbox("选择发送对象", [
+                ("all", "公开到全家相册 🌍"),
+                ("baba", "赠送给：爸爸 👨"),
+                ("mama", "赠送给：妈妈 👩"),
+                ("erzi", "赠送给：儿子 👦"),
+                ("meimei", "赠送给：妹妹 👧")
+            ], format_func=lambda x: x[1], label_visibility="collapsed")
 
         if st.button("保存并发送画作 💌", use_container_width=True):
             if canvas_result.image_data is not None:
@@ -378,7 +391,7 @@ else:
             st.caption("暂无照片")
         else:
             for p in photos:
-                st.image(p["url"], caption=p.get("uploader", "家人"))
+                st.image(p["url"], caption=f"上传者：{p.get('uploader', '家人')}")
                 if st.button("删除照片", key=f"del_photo_{p['id']}"):
                     data["photos"] = [item for item in photos if item["id"] != p["id"]]
                     save_data(data)
