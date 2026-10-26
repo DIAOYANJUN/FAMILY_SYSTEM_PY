@@ -139,9 +139,18 @@ pets = {
     }
 }
 
-# 严格使用内存会话控制登录状态
+# 智能双重校验：优先从 URL 参数恢复，其次从 session_state 恢复
+query_params = st.query_params
+url_user = query_params.get("user", None)
+
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
+
+# 如果 URL 里有临时登录凭证，自动同步给内存
+if url_user in users and not st.session_state.logged_in_user:
+    st.session_state.logged_in_user = url_user
+
+current_user = st.session_state.logged_in_user
 
 if "selected_pet" not in st.session_state:
     st.session_state.selected_pet = None
@@ -153,7 +162,7 @@ data = load_data()
 today_date_str = datetime.now().strftime("%Y-%m-%d")
 
 # --- 登录界面 ---
-if not st.session_state.logged_in_user:
+if not current_user:
     st.markdown("<h2 style='text-align: center; color: #ff7b93;'>🏡 温馨家庭系统登录</h2>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -162,11 +171,11 @@ if not st.session_state.logged_in_user:
         if st.button("登 录", use_container_width=True):
             if username_input in users and users[username_input]["pass"] == password_input:
                 st.session_state.logged_in_user = username_input
+                st.query_params["user"] = username_input  # 写入 URL 供刷新使用
                 st.rerun()
             else:
                 st.error("账号或密码错误！")
 else:
-    current_user = st.session_state.logged_in_user
     user_info = users[current_user]
 
     # --- 精灵点击弹窗 ---
@@ -260,11 +269,14 @@ else:
     with col_top2:
         st.write(f"欢迎，**{user_info['name']}**！")
     with col_top3:
+        # 点击刷新按钮时，确保持续带上当前用户的参数进行刷新
         if st.button("🔄 刷新数据"):
+            st.query_params["user"] = current_user
             st.rerun()
     with col_top4:
         if st.button("退出登录"):
             st.session_state.logged_in_user = None
+            st.query_params.clear()  # 清除 URL 参数，别人复制网址时必须重新登录
             st.rerun()
 
     st.markdown("---")
