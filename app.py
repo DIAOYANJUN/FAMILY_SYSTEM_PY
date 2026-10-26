@@ -174,11 +174,13 @@ pets = {
     }
 }
 
-# ---------------- 2. 登录态维持与 Cookie 校验 ----------------
+# ---------------- 2. 安全登录态与 Cookie 校验 ----------------
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
-cookie_user = cookie_controller.get("family_logged_user")
+# 不设置 max_age，使其成为标准的“浏览器会话 Cookie”。
+# 这样在当前浏览器内怎么按 F5 或点刷新都不会丢；但只要换到别的浏览器（如从 Chrome 到 Edge），Cookie 无法跨浏览器复制，必须重新登录。
+cookie_user = cookie_controller.get("family_session_user")
 if cookie_user in users and not st.session_state.logged_in_user:
     st.session_state.logged_in_user = cookie_user
 
@@ -205,7 +207,8 @@ if not current_user:
             if submit:
                 if username_input in users and users[username_input]["pass"] == password_input:
                     st.session_state.logged_in_user = username_input
-                    cookie_controller.set("family_logged_user", username_input, max_age=7*24*60*60)
+                    # 写入会话 Cookie
+                    cookie_controller.set("family_session_user", username_input)
                     st.success("登录成功！正在进入...")
                     st.rerun()
                 else:
@@ -278,7 +281,7 @@ with st.sidebar:
         st.rerun()
 
     if st.button("🚪 退出登录", use_container_width=True):
-        cookie_controller.remove("family_logged_user")
+        cookie_controller.remove("family_session_user")
         st.session_state.logged_in_user = None
         st.rerun()
 
