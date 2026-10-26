@@ -8,7 +8,7 @@ from datetime import datetime
 from PIL import Image
 import io
 from streamlit_drawable_canvas import st_canvas
-import streamlit.components.v1 as components
+from streamlit_cookies_controller import CookieController
 
 # ---------------- 0. 页面配置与 CSS 隐藏官方杂项 ----------------
 st.set_page_config(
@@ -79,6 +79,7 @@ footer {visibility: hidden;}
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
+cookie_controller = CookieController()
 DATA_FILE = "family_data.json"
 
 # ---------------- 1. 核心数据读写与 GitHub API 同步 ----------------
@@ -154,7 +155,7 @@ pets = {
     "bubu": {
         "name": "布布", 
         "img": "bubu.jpeg", 
-        "desc": "我是精灵·布布！性格温顺又粘인，是大家的贴心小棉袄，最喜欢在阳光下懒洋洋地睡大觉。💤",
+        "desc": "我是精灵·布布！性格温顺又粘人，是大家的贴心小棉袄，最喜欢在阳光下懒洋洋地睡大觉。💤",
         "quotes": {
             "2026-10-26": "阳光暖洋洋的，布布在沙发上找到了最舒服的睡觉姿势~ ☀️",
             "2026-10-25": "今天布布有乖乖看家哦，求夸奖！🥰",
@@ -173,36 +174,15 @@ pets = {
     }
 }
 
-# ---------------- 2. 严格的 sessionStorage 标签页隔离逻辑 ----------------
+# ---------------- 2. Cookie 登录态保持 ----------------
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
-# 核心安全桥接脚本：
-# 1. 如果当前标签页的 sessionStorage 有记录，F5 刷新时自动静默带参数恢复。
-# 2. 如果是复制网址到新浏览器/新标签页（sessionStorage 为空），脚本检测到后会立刻剥离参数，强制打回登录页！
-session_guard_js = """
-<script>
-    const savedUser = sessionStorage.getItem("family_strict_user");
-    const urlParams = new URLSearchParams(window.parent.location.search);
-    const urlToken = urlParams.get("token");
+# 从 Cookie 中获取登录凭证
+cookie_user = cookie_controller.get("family_user_cookie")
 
-    if (savedUser && !urlToken) {
-        // 当前标签页按 F5 刷新：自动在后台补全凭证重载，不掉登录
-        const sep = window.parent.location.search ? "&" : "?";
-        window.parent.location.href = window.parent.location.href + sep + "token=" + savedUser;
-    } else if (!savedUser && urlToken) {
-        // 复制网址到新浏览器/新标签页（本地没有缓存）：立刻剥离凭证，强行拦截要求重新登录！
-        window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
-    }
-</script>
-"""
-components.html(session_guard_js, height=0)
-
-query_params = st.query_params
-url_token_user = query_params.get("token", None)
-
-if url_token_user in users and not st.session_state.logged_in_user:
-    st.session_state.logged_in_user = url_token_user
+if cookie_user in users and not st.session_state.logged_in_user:
+    st.session_state.logged_in_user = cookie_user
 
 current_user = st.session_state.logged_in_user
 
@@ -227,15 +207,8 @@ if not current_user:
             if submit:
                 if username_input in users and users[username_input]["pass"] == password_input:
                     st.session_state.logged_in_user = username_input
-                    
-                    # 登录成功：写入当前标签页的 sessionStorage 并带参重载
-                    login_js = f"""
-                    <script>
-                        sessionStorage.setItem("family_strict_user", "{username_input}");
-                        window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?token={username_input}";
-                    </script>
-                    """
-                    components.html(login_js, height=0)
+                    # 写入 Cookie（保存 7 天，在当前浏览器内怎么刷新都不会掉线）
+                    cookie_controller.set("family_user_cookie", username_input, max_age=7*24*60*60)
                     st.success("登录成功！正在进入...")
                     st.rerun()
                 else:
@@ -304,18 +277,11 @@ with st.sidebar:
 
     st.markdown("---")
     if st.button("🔄 刷新并同步数据", type="primary", use_container_width=True):
-        st.query_params["token"] = current_user
         st.toast("已成功从云端仓库同步最新状态！", icon="✅")
         st.rerun()
 
     if st.button("🚪 退出登录", use_container_width=True):
-        logout_js = """
-        <script>
-            sessionStorage.removeItem("family_strict_user");
-            window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
-        </script>
-        """
-        components.html(logout_js, height=0)
+        cookie_controller.remove("family_user_cookie")
         st.session_state.logged_in_user = None
         st.rerun()
 
