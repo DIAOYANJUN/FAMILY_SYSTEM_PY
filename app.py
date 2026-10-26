@@ -139,12 +139,9 @@ pets = {
     }
 }
 
-# 从网址参数中读取登录状态（实现刷新不掉线）
-query_params = st.query_params
-logged_in_user = query_params.get("user", None)
-
-if logged_in_user not in users:
-    logged_in_user = None
+# 严格使用内存会话控制登录状态
+if "logged_in_user" not in st.session_state:
+    st.session_state.logged_in_user = None
 
 if "selected_pet" not in st.session_state:
     st.session_state.selected_pet = None
@@ -156,7 +153,7 @@ data = load_data()
 today_date_str = datetime.now().strftime("%Y-%m-%d")
 
 # --- 登录界面 ---
-if not logged_in_user:
+if not st.session_state.logged_in_user:
     st.markdown("<h2 style='text-align: center; color: #ff7b93;'>🏡 温馨家庭系统登录</h2>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -164,13 +161,12 @@ if not logged_in_user:
         password_input = st.text_input("密码", type="password")
         if st.button("登 录", use_container_width=True):
             if username_input in users and users[username_input]["pass"] == password_input:
-                # 登录成功，将账号写入 URL 参数，实现永久免登保持
-                st.query_params["user"] = username_input
+                st.session_state.logged_in_user = username_input
                 st.rerun()
             else:
                 st.error("账号或密码错误！")
 else:
-    current_user = logged_in_user
+    current_user = st.session_state.logged_in_user
     user_info = users[current_user]
 
     # --- 精灵点击弹窗 ---
@@ -268,8 +264,7 @@ else:
             st.rerun()
     with col_top4:
         if st.button("退出登录"):
-            # 清除 URL 中的登录标记，并刷新
-            st.query_params.clear()
+            st.session_state.logged_in_user = None
             st.rerun()
 
     st.markdown("---")
