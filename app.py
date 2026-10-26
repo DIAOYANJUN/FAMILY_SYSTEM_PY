@@ -176,14 +176,15 @@ pets = {
     }
 }
 
-# ---------------- 2. 稳如磐石的 Cookie 登录态维持逻辑 ----------------
+# ---------------- 2. 双保险登录态维持逻辑（Cookie + Session） ----------------
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
-# 🌟 核心修改：从浏览器的加密 Cookie 中读取登录状态（不再暴露在网址里）
-cookie_user = cookie_controller.get("family_logged_user")
-if cookie_user in users and not st.session_state.logged_in_user:
-    st.session_state.logged_in_user = cookie_user
+# 🌟 核心双保险：如果内存里没有，就去 Cookie 里找；如果 Cookie 里也没有，才拦截
+if not st.session_state.logged_in_user:
+    cookie_user = cookie_controller.get("family_logged_user")
+    if cookie_user in users:
+        st.session_state.logged_in_user = cookie_user
 
 current_user = st.session_state.logged_in_user
 
@@ -208,10 +209,7 @@ if not current_user:
             if submit:
                 if username_input in users and users[username_input]["pass"] == password_input:
                     st.session_state.logged_in_user = username_input
-                    
-                    # 🌟 核心修改：登录成功后，将身份加密存入 Cookie（有效期 7 天）
                     cookie_controller.set("family_logged_user", username_input, max_age=60*60*24*7)
-                    
                     st.success("登录成功！正在进入...")
                     st.rerun()
                 else:
@@ -282,7 +280,6 @@ with st.sidebar:
         st.rerun()
 
     if st.button("🚪 退出登录", use_container_width=True):
-        # 🌟 核心修改：退出时安全销毁 Cookie
         cookie_controller.remove("family_logged_user")
         st.session_state.logged_in_user = None
         st.rerun()
