@@ -139,7 +139,7 @@ pets = {
     }
 }
 
-# 使用 st.session_state 管理登录（关闭页面或新开链接需重新登录，但页面内点刷新按钮不会登出）
+# 利用 Streamlit 内置的 query_params（URL参数）或 session_state 保持登录
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
@@ -253,7 +253,7 @@ else:
             st.session_state.selected_pet = "yier"
             st.rerun()
 
-    # --- 顶部 Header（带有一键刷新数据按钮和退出登录按钮） ---
+    # --- 顶部 Header（点击刷新数据按钮直接触发 st.rerun() 刷新最新数据，不登出） ---
     col_top1, col_top2, col_top3, col_top4 = st.columns([5, 2, 1, 1])
     with col_top1:
         st.markdown("<h2 style='color: #ff7b93; margin:0;'>🏡 温馨家庭系统 (云端共享)</h2>", unsafe_allow_html=True)
@@ -304,7 +304,7 @@ else:
 
         st.write("")
 
-        # 3. 💬 家庭留言板（支持选单个人、多个人或全家人）
+        # 3. 💬 家庭留言板
         st.markdown("### 💬 家庭留言板")
         
         target_mode = st.radio("发送给谁？", ["全家人 (公开)", "指定家人"], horizontal=True)
@@ -354,7 +354,7 @@ else:
                 """, unsafe_allow_html=True)
 
     with right_col:
-        # 4. 家庭涂鸦与赠送板（带大号清除按钮）
+        # 4. 家庭涂鸦与赠送板
         st.markdown("### 🎨 家庭涂鸦与赠送板")
         stroke_color = st.color_picker("画笔颜色", "#ff7b93")
         
