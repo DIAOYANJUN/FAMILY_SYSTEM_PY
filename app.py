@@ -107,9 +107,36 @@ users = {
 }
 
 pets = {
-    "lulu": {"name": "噜噜", "img": "lulu.jpeg", "desc": "我是精灵·噜噜！家里最活泼的小可爱，每天负责卖萌和迎接大家回家，最喜欢吃好吃的零食！✨"},
-    "bubu": {"name": "布布", "img": "bubu.jpeg", "desc": "我是精灵·布布！性格温顺又粘人，是大家的贴心小棉袄，最喜欢在阳光下懒洋洋地睡大觉。💤"},
-    "yier": {"name": "一二", "img": "yier.jpeg", "desc": "我是一二精灵！行事雷厉风行，是家庭里的快乐源泉，每天都在元气满满地巡视领地！⚡"}
+    "lulu": {
+        "name": "噜噜", 
+        "img": "lulu.jpeg", 
+        "desc": "我是精灵·噜噜！家里最活泼的小可爱，每天负责卖萌和迎接大家回家，最喜欢吃好吃的零食！✨",
+        "quotes": {
+            "2026-10-26": "今天是个好天气，噜噜在门口等大家回家吃好吃的零食哦！🐾",
+            "2026-10-25": "昨天噜噜抓到了一只蝴蝶，开心得转了好几个圈！🦋",
+            "2026-10-24": "大家今天都要开开心心的，噜噜给你们加油鸭！💪"
+        }
+    },
+    "bubu": {
+        "name": "布布", 
+        "img": "bubu.jpeg", 
+        "desc": "我是精灵·布布！性格温顺又粘人，是大家的贴心小棉袄，最喜欢在阳光下懒洋洋地睡大觉。💤",
+        "quotes": {
+            "2026-10-26": "阳光暖洋洋的，布布在沙发上找到了最舒服的睡觉姿势~ ☀️",
+            "2026-10-25": "今天布布有乖乖看家哦，求夸奖！🥰",
+            "2026-10-24": "晚上记得盖好被子，布布陪大家做个好梦。🌙"
+        }
+    },
+    "yier": {
+        "name": "一二", 
+        "img": "yier.jpeg", 
+        "desc": "我是一二精灵！行事雷厉风行，是家庭里的快乐源泉，每天都在元气满满地巡视领地！⚡",
+        "quotes": {
+            "2026-10-26": "一二已经把家里巡视完毕啦！今天一切安全，大家冲呀！🚀",
+            "2026-10-25": "今天跑得有点快，差点把自己的尾巴追到了... 🙈",
+            "2026-10-24": "元气满满的一天开始啦，大家今天也要加油冲鸭！🌟"
+        }
+    }
 }
 
 if "logged_in_user" not in st.session_state:
@@ -122,6 +149,7 @@ if "canvas_reset_counter" not in st.session_state:
     st.session_state.canvas_reset_counter = 0
 
 data = load_data()
+today_date_str = datetime.now().strftime("%Y-%m-%d")
 
 # --- 登录界面 ---
 if not st.session_state.logged_in_user:
@@ -144,14 +172,32 @@ else:
     if st.session_state.selected_pet:
         p_key = st.session_state.selected_pet
         p_info = pets[p_key]
+        today_quote = p_info["quotes"].get(today_date_str, "今天也是充满元气的一天！✨")
         
         @st.dialog(f"✨ 精灵档案：{p_info['name']}")
         def pet_dialog():
             if os.path.exists(p_info["img"]):
-                st.image(p_info["img"], width=250)
-            st.write(p_info["desc"])
+                st.image(p_info["img"], width=220)
+            
+            st.markdown(f"**【精灵简介】**\n{p_info['desc']}")
+            st.markdown(f"**【今日语录 ({today_date_str})】**\n> *\"{today_quote}\" 🌸*")
+            
+            if "show_history" not in st.session_state:
+                st.session_state.show_history = False
+
+            if st.button("📖 查看历史语录档案"):
+                st.session_state.show_history = not st.session_state.show_history
+
+            if st.session_state.get("show_history", False):
+                st.markdown("---")
+                st.markdown("### 📜 历史语录记录")
+                for date_s, q_text in sorted(p_info["quotes"].items(), reverse=True):
+                    st.markdown(f"- **`{date_s}`**: {q_text}")
+
+            st.write("")
             if st.button("关闭档案"):
                 st.session_state.selected_pet = None
+                st.session_state.show_history = False
                 st.rerun()
         pet_dialog()
 
@@ -179,16 +225,30 @@ else:
         </div>
     """, unsafe_allow_html=True)
 
+    # --- 左侧栏：精灵照片展示与档案入口 ---
     with st.sidebar:
         st.markdown("### 🌟 家庭守护精灵")
-        st.caption("点击下方按钮查看精灵档案：")
-        if st.button("✨ 查看 噜噜档案"):
+        st.caption("点击下方按钮查看精灵档案与历史语录：")
+        
+        if os.path.exists("lulu.jpeg"):
+            st.image("lulu.jpeg", width=120, caption="✨ 噜噜")
+        if st.button("查看 噜噜 档案"):
             st.session_state.selected_pet = "lulu"
             st.rerun()
-        if st.button("✨ 查看 布布档案"):
+
+        st.markdown("---")
+
+        if os.path.exists("bubu.jpeg"):
+            st.image("bubu.jpeg", width=120, caption="✨ 布布")
+        if st.button("查看 布布 档案"):
             st.session_state.selected_pet = "bubu"
             st.rerun()
-        if st.button("✨ 查看 一二档案"):
+
+        st.markdown("---")
+
+        if os.path.exists("yier.jpeg"):
+            st.image("yier.jpeg", width=120, caption="✨ 一二")
+        if st.button("查看 一二 档案"):
             st.session_state.selected_pet = "yier"
             st.rerun()
 
@@ -223,25 +283,26 @@ else:
 
         st.write("")
 
-        # 2. 个人专属信箱
-        st.markdown(f"### 📬 我的专属信箱 ({user_info['name']})")
+        # 2. 📬 专属信箱改造成【折叠展开按钮】样式
         my_mailbox = data["mailboxes"].get(current_user, [])
-        if not my_mailbox:
-            st.caption("信箱空空的，快让家人送你一幅画吧！")
-        else:
-            for mail in my_mailbox:
-                st.image(mail["url"], caption=f"来自：{mail['sender']}")
-                if st.button("删除这封信", key=f"del_mail_{mail['id']}"):
-                    data["mailboxes"][current_user] = [m for m in my_mailbox if m["id"] != mail["id"]]
-                    save_data(data)
-                    st.rerun()
+        mailbox_title = f"📬 打开我的专属信箱 ({user_info['name']}) — 共 {len(my_mailbox)} 封信件"
+        
+        with st.expander(mailbox_title):
+            if not my_mailbox:
+                st.caption("信箱空空的，快让家人送你一幅画吧！")
+            else:
+                for mail in my_mailbox:
+                    st.image(mail["url"], caption=f"来自：{mail['sender']}")
+                    if st.button("删除这封信", key=f"del_mail_{mail['id']}"):
+                        data["mailboxes"][current_user] = [m for m in my_mailbox if m["id"] != mail["id"]]
+                        save_data(data)
+                        st.rerun()
 
         st.write("")
 
         # 3. 💬 家庭留言板（支持选单个人、多个人或全家人）
         st.markdown("### 💬 家庭留言板")
         
-        # 接收对象选择方式
         target_mode = st.radio("发送给谁？", ["全家人 (公开)", "指定家人"], horizontal=True)
         selected_targets = []
         if target_mode == "指定家人":
@@ -260,7 +321,7 @@ else:
                     if "messages" not in data:
                         data["messages"] = []
                     
-                    target_str = "全家人 🌍" if target_mode == "️全家人 (公开)" or not selected_targets else " @".join(selected_targets)
+                    target_str = "全家人 🌍" if target_mode == "全家人 (公开)" or not selected_targets else " @".join(selected_targets)
                     if target_mode == "指定家人":
                         target_str = " @ " + target_str
 
