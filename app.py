@@ -139,6 +139,7 @@ pets = {
     }
 }
 
+# 使用 st.session_state 管理登录（关闭页面或新开链接需重新登录，但页面内点刷新按钮不会登出）
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
@@ -252,13 +253,16 @@ else:
             st.session_state.selected_pet = "yier"
             st.rerun()
 
-    # --- 顶部 Header ---
-    col_top1, col_top2, col_top3 = st.columns([6, 2, 1])
+    # --- 顶部 Header（带有一键刷新数据按钮和退出登录按钮） ---
+    col_top1, col_top2, col_top3, col_top4 = st.columns([5, 2, 1, 1])
     with col_top1:
         st.markdown("<h2 style='color: #ff7b93; margin:0;'>🏡 温馨家庭系统 (云端共享)</h2>", unsafe_allow_html=True)
     with col_top2:
         st.write(f"欢迎，**{user_info['name']}**！")
     with col_top3:
+        if st.button("🔄 刷新数据"):
+            st.rerun()
+    with col_top4:
         if st.button("退出登录"):
             st.session_state.logged_in_user = None
             st.rerun()
@@ -283,7 +287,7 @@ else:
 
         st.write("")
 
-        # 2. 📬 专属信箱改造成【折叠展开按钮】样式
+        # 2. 📬 专属信箱折叠抽屉
         my_mailbox = data["mailboxes"].get(current_user, [])
         mailbox_title = f"📬 打开我的专属信箱 ({user_info['name']}) — 共 {len(my_mailbox)} 封信件"
         
