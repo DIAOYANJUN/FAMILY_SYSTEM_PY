@@ -6,7 +6,6 @@ from PIL import Image
 import io
 import base64
 from streamlit_drawable_canvas import st_canvas
-import streamlit.components.v1 as components
 
 # 页面基础配置
 st.set_page_config(page_title="温馨家庭系统", page_icon="🏡", layout="wide")
@@ -140,36 +139,12 @@ pets = {
     }
 }
 
-if "logged_in_user" not in st.session_state:
-    st.session_state.logged_in_user = None
-
-# 核心改进：利用 localStorage 保持同标签页刷新不掉线
-# 如果是新开标签页或换浏览器，我们可以通过检测 referrer 或初始参数来安全拦截
-# 这里我们用前端 JS 检查：如果网址里没有带安全 token 且是新标签页打开，则自动清理
-auth_js = """
-<script>
-    const localUser = localStorage.getItem("family_persistent_user");
-    const urlParams = new URLSearchParams(window.parent.location.search);
-    const hasToken = urlParams.get("token");
-
-    if (localUser && !hasToken) {
-        // 同标签页刷新：自动带上 token 重新载入，免去重新登录
-        window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?token=" + localUser;
-    } else if (!localUser && hasToken) {
-        // 如果本地没有但URL有，清理URL防止直接复制生效
-        window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
-    }
-</script>
-"""
-components.html(auth_js, height=0)
-
+# 通过 URL 查询参数（query_params）无缝保持登录，F5刷新或点刷新按钮绝对不掉线
 query_params = st.query_params
-token_user = query_params.get("token", None)
+logged_in_user = query_params.get("user", None)
 
-if token_user in users and not st.session_state.logged_in_user:
-    st.session_state.logged_in_user = token_user
-
-current_user = st.session_state.logged_in_user
+if logged_in_user not in users:
+    logged_in_user = None
 
 if "selected_pet" not in st.session_state:
     st.session_state.selected_pet = None
@@ -181,7 +156,7 @@ data = load_data()
 today_date_str = datetime.now().strftime("%Y-%m-%d")
 
 # --- 登录界面 ---
-if not current_user:
+if not logged_in_user:
     st.markdown("<h2 style='text-align: center; color: #ff7b93;'>🏡 温馨家庭系统登录</h2>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -189,18 +164,12 @@ if not current_user:
         password_input = st.text_input("密码", type="password")
         if st.button("登 录", use_container_width=True):
             if username_input in users and users[username_input]["pass"] == password_input:
-                st.session_state.logged_in_user = username_input
-                # 登录成功后，写入 localStorage 并带 token 刷新
-                login_js = f"""
-                <script>
-                    localStorage.setItem("family_persistent_user", "{username_input}");
-                    window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?token={username_input}";
-                </script>
-                """
-                components.html(login_js, height=0)
+                st.query_params["user"] = username_input
+                st.rerun()
             else:
                 st.error("账号或密码错误！")
 else:
+    current_user = logged_in_user
     user_info = users[current_user]
 
     # --- 精灵点击弹窗 ---
@@ -295,17 +264,11 @@ else:
         st.write(f"欢迎，**{user_info['name']}**！")
     with col_top3:
         if st.button("🔄 刷新数据"):
-            st.query_params["token"] = current_user
             st.rerun()
     with col_top4:
         if st.button("退出登录"):
-            logout_js = """
-            <script>
-                localStorage.removeItem("family_persistent_user");
-                window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
-            </script>
-            """
-            components.html(logout_js, height=0)
+            st.query_params.clear()
+            st.rerun()
 
     st.markdown("---")
 
