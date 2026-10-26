@@ -8,9 +8,8 @@ from datetime import datetime
 from PIL import Image
 import io
 from streamlit_drawable_canvas import st_canvas
-from streamlit_cookies_controller import CookieController
 
-# ---------------- 0. 页面配置与 CSS 隐藏官方杂项 ----------------
+# ---------------- 0. 页面配置与 CSS 美化 ----------------
 st.set_page_config(
     page_title="温馨家庭系统",
     page_icon="🏡",
@@ -79,10 +78,9 @@ footer {visibility: hidden;}
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-cookie_controller = CookieController()
 DATA_FILE = "family_data.json"
 
-# ---------------- 1. 核心数据读写与 GitHub API 同步 ----------------
+# ---------------- 1. 核心数据读写与 GitHub API 同步逻辑 ----------------
 def get_github_config():
     try:
         gh_token = st.secrets["github"]["token"]
@@ -174,15 +172,16 @@ pets = {
     }
 }
 
-# ---------------- 2. Cookie 登录态保持 ----------------
+# ---------------- 2. 登录状态与 URL 参数协同逻辑 ----------------
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
-# 从 Cookie 中获取登录凭证
-cookie_user = cookie_controller.get("family_user_cookie")
+# 核心：通过读取 URL 的 ?user=参数 来维持同一浏览器内刷新不掉线
+query_params = st.query_params
+url_user = query_params.get("user", None)
 
-if cookie_user in users and not st.session_state.logged_in_user:
-    st.session_state.logged_in_user = cookie_user
+if url_user in users and not st.session_state.logged_in_user:
+    st.session_state.logged_in_user = url_user
 
 current_user = st.session_state.logged_in_user
 
@@ -207,8 +206,8 @@ if not current_user:
             if submit:
                 if username_input in users and users[username_input]["pass"] == password_input:
                     st.session_state.logged_in_user = username_input
-                    # 写入 Cookie（保存 7 天，在当前浏览器内怎么刷新都不会掉线）
-                    cookie_controller.set("family_user_cookie", username_input, max_age=7*24*60*60)
+                    # 登录成功后，将身份直接写入 URL 参数中，实现免密刷新
+                    st.query_params["user"] = username_input
                     st.success("登录成功！正在进入...")
                     st.rerun()
                 else:
@@ -225,7 +224,7 @@ if "canvas_reset_counter" not in st.session_state:
 data = load_data()
 today_date_str = datetime.now().strftime("%Y-%m-%d")
 
-# ---------------- 3. 侧边栏与时钟 ----------------
+# ---------------- 3. 侧边栏与动态时钟 ----------------
 clock_html = """
 <div style="font-family: sans-serif; font-size: 13px; font-weight: bold; color: #ff5c8a; background: #fff0f3; padding: 8px; border-radius: 8px; text-align: center; border: 1px solid #ffe6eb;">
     🕒 <span id="clock">获取时间中...</span>
@@ -253,8 +252,6 @@ with st.sidebar:
     st.markdown("---")
     
     st.markdown("### 🌟 家庭守护精灵")
-    st.caption("点击下方按钮查看精灵档案：")
-    
     if os.path.exists("lulu.jpeg"):
         st.image("lulu.jpeg", width=120, caption="✨ 噜噜")
     if st.button("查看 噜噜 档案", use_container_width=True):
@@ -277,15 +274,17 @@ with st.sidebar:
 
     st.markdown("---")
     if st.button("🔄 刷新并同步数据", type="primary", use_container_width=True):
+        st.query_params["user"] = current_user
         st.toast("已成功从云端仓库同步最新状态！", icon="✅")
         st.rerun()
 
     if st.button("🚪 退出登录", use_container_width=True):
-        cookie_controller.remove("family_user_cookie")
         st.session_state.logged_in_user = None
+        if "user" in st.query_params:
+            del st.query_params["user"]
         st.rerun()
 
-# --- 精灵弹窗 ---
+# 精灵档案弹窗逻辑
 if st.session_state.selected_pet:
     p_key = st.session_state.selected_pet
     p_info = pets[p_key]
@@ -317,7 +316,7 @@ if st.session_state.selected_pet:
             st.rerun()
     pet_dialog()
 
-# --- 渲染左右两侧固定悬浮精灵 ---
+# 左右两侧悬浮宠物渲染
 lulu_b64 = base64.b64encode(open(pets["lulu"]["img"], "rb").read()).decode() if os.path.exists(pets["lulu"]["img"]) else ""
 bubu_b64 = base64.b64encode(open(pets["bubu"]["img"], "rb").read()).decode() if os.path.exists(pets["bubu"]["img"]) else ""
 yier_b64 = base64.b64encode(open(pets["yier"]["img"], "rb").read()).decode() if os.path.exists(pets["yier"]["img"]) else ""
@@ -341,17 +340,14 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# ---------------- 4. 主体系统界面 ----------------
-col_top1, col_top2 = st.columns([5, 1])
-with col_top1:
-    st.markdown("<h2 style='color: #ff7b93; margin:0;'>🏡 温馨家庭系统 (云端共享)</h2>", unsafe_allow_html=True)
-
+# ---------------- 4. 主体系统界面（双栏布局） ----------------
+st.markdown("<h2 style='color: #ff7b93; margin:0;'>🏡 温馨家庭系统 (云端共享)</h2>", unsafe_allow_html=True)
 st.markdown("---")
 
 left_col, right_col = st.columns(2)
 
 with left_col:
-    # 1. 生日倒计时
+    # 模块 1：生日倒计时
     st.markdown("### 🎂 家人生日倒计时")
     today = datetime.now()
     for u_key, u_val in users.items():
@@ -365,10 +361,9 @@ with left_col:
 
     st.write("")
 
-    # 2. 📬 专属信箱折叠抽屉
+    # 模块 2：专属信箱
     my_mailbox = data["mailboxes"].get(current_user, [])
     mailbox_title = f"📬 打开我的专属信箱 ({user_info['name']}) — 共 {len(my_mailbox)} 封信件"
-    
     with st.expander(mailbox_title):
         if not my_mailbox:
             st.caption("信箱空空的，快让家人送你一幅画吧！")
@@ -382,13 +377,11 @@ with left_col:
 
     st.write("")
 
-    # 3. 💬 家庭留言板
+    # 模块 3：家庭留言板
     st.markdown("### 💬 家庭留言板")
-    
     target_mode = st.radio("发送给谁？", ["全家人 (公开)", "指定家人"], horizontal=True)
     selected_targets = []
     if target_mode == "指定家人":
-        st.caption("可单选或多选：")
         cols_t = st.columns(4)
         for idx, (u_k, u_v) in enumerate(users.items()):
             if cols_t[idx].checkbox(u_v["name"], key=f"target_{u_k}"):
@@ -402,7 +395,6 @@ with left_col:
             else:
                 if "messages" not in data:
                     data["messages"] = []
-                
                 target_str = "全家人 🌍" if target_mode == "全家人 (公开)" or not selected_targets else " @".join(selected_targets)
                 if target_mode == "指定家人":
                     target_str = " @ " + target_str
@@ -432,7 +424,7 @@ with left_col:
             """, unsafe_allow_html=True)
 
 with right_col:
-    # 4. 家庭涂鸦与赠送板
+    # 模块 4：家庭涂鸦与赠送板
     st.markdown("### 🎨 家庭涂鸦与赠送板")
     stroke_color = st.color_picker("画笔颜色", "#ff7b93")
     
@@ -482,7 +474,7 @@ with right_col:
 
     st.write("")
 
-    # 5. 每日全家打卡
+    # 模块 5：每日全家打卡
     st.markdown("### ✨ 每日全家打卡")
     today_str = today.strftime("%Y-%m-%d")
     checkins = data.get("checkins", {})
@@ -515,7 +507,7 @@ with right_col:
 
     st.write("")
 
-    # 6. 公共家庭相册
+    # 模块 6：公共家庭相册
     st.markdown("### 📸 公共家庭相册")
     uploaded_file = st.file_uploader("上传照片到全家相册", type=["jpg", "png", "jpeg"])
     if uploaded_file is not None:
