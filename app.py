@@ -6,7 +6,6 @@ from PIL import Image
 import io
 import base64
 from streamlit_drawable_canvas import st_canvas
-import streamlit.components.v1 as components
 
 # 页面基础配置
 st.set_page_config(page_title="温馨家庭系统", page_icon="🏡", layout="wide")
@@ -84,7 +83,7 @@ st.markdown("""
 DATA_FILE = "family_data.json"
 
 def load_data():
-    # 每次调用都实时从磁盘读取最新云端数据，确保多人生日、打卡、留言实时同步
+    # 每次强制从本地/云端硬盘读取最新的 family_data.json，确保多设备数据互通
     if not os.path.exists(DATA_FILE):
         initial = {
             "checkins": {},
@@ -94,8 +93,16 @@ def load_data():
         }
         save_data(initial)
         return initial
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {
+            "checkins": {},
+            "photos": [],
+            "messages": [],
+            "mailboxes": {"baba": [], "mama": [], "erzi": [], "meimei": []}
+        }
 
 def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
@@ -141,41 +148,12 @@ pets = {
     }
 }
 
-if "logged_in_user" not in st.session_state:
-    st.session_state.logged_in_user = None
-
-# --- 前端会话桥接：F5刷新同标签页不掉登录，新标签页自动清空 ---
-session_sync_js = """
-<script>
-    const savedUser = sessionStorage.getItem("family_active_user");
-    const urlParams = new URLSearchParams(window.parent.location.search);
-    const hasParam = urlParams.get("s_token");
-
-    if (savedUser && !hasParam) {
-        // 同标签页 F5 刷新：自动带上 token 静默恢复
-        const separator = window.parent.location.search ? "&" : "?";
-        window.parent.location.href = window.parent.location.href + separator + "s_token=" + savedUser;
-    }
-</script>
-"""
-components.html(session_sync_js, height=0)
-
+# --- 登录与刷新保持机制 ---
 query_params = st.query_params
-url_token = query_params.get("s_token", None)
+logged_in_user = query_params.get("session_user", None)
 
-if url_token in users and not st.session_state.logged_in_user:
-    st.session_state.logged_in_user = url_token
-    # 登录后立即在浏览器地址栏“无痕”清理掉 token 露出干净网址，防止复制时带上凭证
-    components.html("""
-        <script>
-            if (window.parent.history.replaceState) {
-                const cleanUrl = window.parent.location.origin + window.parent.location.pathname;
-                window.parent.history.replaceState({path: cleanUrl}, '', cleanUrl);
-            }
-        </script>
-    """, height=0)
-
-current_user = st.session_state.logged_in_user
+if logged_in_user not in users:
+    logged_in_user = None
 
 if "selected_pet" not in st.session_state:
     st.session_state.selected_pet = None
@@ -183,11 +161,12 @@ if "selected_pet" not in st.session_state:
 if "canvas_reset_counter" not in st.session_state:
     st.session_state.canvas_reset_counter = 0
 
+# 每次页面加载时，实时从云端仓库读取最新数据
 data = load_data()
 today_date_str = datetime.now().strftime("%Y-%m-%d")
 
 # --- 登录界面 ---
-if not current_user:
+if not logged_in_user:
     st.markdown("<h2 style='text-align: center; color: #ff7b93;'>🏡 温馨家庭系统登录</h2>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -195,18 +174,12 @@ if not current_user:
         password_input = st.text_input("密码", type="password")
         if st.button("登 录", use_container_width=True):
             if username_input in users and users[username_input]["pass"] == password_input:
-                st.session_state.logged_in_user = username_input
-                # 写入 sessionStorage 并带参数重载
-                login_js = f"""
-                <script>
-                    sessionStorage.setItem("family_active_user", "{username_input}");
-                    window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?s_token={username_input}";
-                </script>
-                """
-                components.html(login_js, height=0)
+                st.query_params["session_user"] = username_input
+                st.rerun()
             else:
                 st.error("账号或密码错误！")
 else:
+    current_user = logged_in_user
     user_info = users[current_user]
 
     # --- 精灵点击弹窗 ---
@@ -300,18 +273,14 @@ else:
     with col_top2:
         st.write(f"欢迎，**{user_info['name']}**！")
     with col_top3:
+        # 点击刷新数据：带上当前用户参数重新加载，F5 刷新绝不掉登录，并立刻从文件同步最新打卡和留言
         if st.button("🔄 刷新数据"):
+            st.query_params["session_user"] = current_user
             st.rerun()
     with col_top4:
-        # 退出登录按钮：使用稳妥的 JS 清除 sessionStorage 并重定向到干净页面
         if st.button("退出登录"):
-            logout_js = """
-            <script>
-                sessionStorage.removeItem("family_active_user");
-                window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
-            </script>
-            """
-            components.html(logout_js, height=0)
+            st.query_params.clear()
+            st.rerun()
 
     st.markdown("---")
 
@@ -453,7 +422,7 @@ else:
         # 5. 每日全家打卡
         st.markdown("### ✨ 每日全家打卡")
         today_str = today.strftime("%Y-%m-%d")
-        checkins = data["checkins"]
+        checkins = data.get("checkins", {})
 
         for u_key, u_val in users.items():
             if u_key not in checkins:
@@ -469,10 +438,10 @@ else:
             if u_key == current_user:
                 if not checked_today:
                     if cc3.button("点击打卡", key=f"check_{u_key}"):
-                        c_data["checkedToday"] = True
                         c_data["streak"] += 1
                         c_data["last_date"] = today_str
                         checkins[u_key] = c_data
+                        data["checkins"] = checkins
                         save_data(data)
                         st.success("打卡成功！")
                         st.rerun()
