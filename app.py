@@ -6,10 +6,13 @@ from PIL import Image
 import io
 import base64
 from streamlit_drawable_canvas import st_canvas
-import streamlit.components.v1 as components
+from streamlit_cookies_controller import CookieController
 
 # 页面基础配置
 st.set_page_config(page_title="温馨家庭系统", page_icon="🏡", layout="wide")
+
+# 初始化 Cookie 控制器
+controller = CookieController()
 
 # 注入温馨粉色主题与悬浮精灵 CSS
 st.markdown("""
@@ -140,33 +143,14 @@ pets = {
     }
 }
 
+# --- 核心：通过 Cookie 维持登录状态 ---
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
-# 前端 JS：利用 sessionStorage 自动同步同标签页的 F5 刷新
-session_bridge_js = """
-<script>
-    const savedUser = sessionStorage.getItem("family_session_user");
-    const urlParams = new URLSearchParams(window.parent.location.search);
-    const hasParam = urlParams.get("s_user");
-
-    if (savedUser && !hasParam) {
-        // 如果当前标签页有登录记录但网址没有，自动带上参数静默刷新，F5不掉登录
-        const separator = window.parent.location.search ? "&" : "?";
-        window.parent.location.href = window.parent.location.href + separator + "s_user=" + savedUser;
-    } else if (!savedUser && hasParam) {
-        // 如果是新标签页/换浏览器（sessionStorage为空），清空网址参数，强制要求重新登录
-        window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
-    }
-</script>
-"""
-components.html(session_bridge_js, height=0)
-
-query_params = st.query_params
-url_user = query_params.get("s_user", None)
-
-if url_user in users and not st.session_state.logged_in_user:
-    st.session_state.logged_in_user = url_user
+# 从浏览器 Cookie 中尝试获取登录凭证
+cookie_user = controller.get("family_logged_user")
+if cookie_user in users and not st.session_state.logged_in_user:
+    st.session_state.logged_in_user = cookie_user
 
 current_user = st.session_state.logged_in_user
 
@@ -189,14 +173,9 @@ if not current_user:
         if st.button("登 录", use_container_width=True):
             if username_input in users and users[username_input]["pass"] == password_input:
                 st.session_state.logged_in_user = username_input
-                # 登录成功写入当前标签页的 sessionStorage
-                login_js = f"""
-                <script>
-                    sessionStorage.setItem("family_session_user", "{username_input}");
-                    window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?s_user={username_input}";
-                </script>
-                """
-                components.html(login_js, height=0)
+                # 写入 Cookie（有效期 7 天）
+                controller.set("family_logged_user", username_input, max_age=7*24*60*60)
+                st.rerun()
             else:
                 st.error("账号或密码错误！")
 else:
@@ -294,17 +273,13 @@ else:
         st.write(f"欢迎，**{user_info['name']}**！")
     with col_top3:
         if st.button("🔄 刷新数据"):
-            st.query_params["s_user"] = current_user
             st.rerun()
     with col_top4:
         if st.button("退出登录"):
-            logout_js = """
-            <script>
-                sessionStorage.removeItem("family_session_user");
-                window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
-            </script>
-            """
-            components.html(logout_js, height=0)
+            st.session_state.logged_in_user = None
+            # 清除 Cookie
+            controller.remove("family_logged_user")
+            st.rerun()
 
     st.markdown("---")
 
