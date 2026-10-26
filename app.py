@@ -9,6 +9,7 @@ from PIL import Image
 import io
 from streamlit_drawable_canvas import st_canvas
 from streamlit_cookies_controller import CookieController
+import streamlit.components.v1 as components
 
 # ---------------- 0. 页面配置与 CSS 隐藏官方杂项 ----------------
 st.set_page_config(
@@ -174,13 +175,13 @@ pets = {
     }
 }
 
-# ---------------- 2. 安全登录态与 Cookie 校验 ----------------
+# ---------------- 2. 严格的登录态隔离校验 ----------------
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
-# 不设置 max_age，使其成为标准的“浏览器会话 Cookie”。
-# 这样在当前浏览器内怎么按 F5 或点刷新都不会丢；但只要换到别的浏览器（如从 Chrome 到 Edge），Cookie 无法跨浏览器复制，必须重新登录。
-cookie_user = cookie_controller.get("family_session_user")
+cookie_user = cookie_controller.get("family_auth_token")
+
+# 校验 Cookie 中的用户是否合法
 if cookie_user in users and not st.session_state.logged_in_user:
     st.session_state.logged_in_user = cookie_user
 
@@ -207,8 +208,18 @@ if not current_user:
             if submit:
                 if username_input in users and users[username_input]["pass"] == password_input:
                     st.session_state.logged_in_user = username_input
-                    # 写入会话 Cookie
-                    cookie_controller.set("family_session_user", username_input)
+                    # 关键：设置 Cookie（不设 max_age，使其跟随浏览器会话，并在前端强制刷新跳转）
+                    cookie_controller.set("family_auth_token", username_input)
+                    
+                    # 前端强制重定向，确保 Cookie 立即生效并隔离
+                    login_redirect_js = """
+                    <script>
+                        setTimeout(function() {
+                            window.parent.location.reload();
+                        }, 300);
+                    </script>
+                    """
+                    components.html(login_redirect_js, height=0)
                     st.success("登录成功！正在进入...")
                     st.rerun()
                 else:
@@ -281,8 +292,18 @@ with st.sidebar:
         st.rerun()
 
     if st.button("🚪 退出登录", use_container_width=True):
-        cookie_controller.remove("family_session_user")
+        cookie_controller.remove("family_auth_token")
         st.session_state.logged_in_user = None
+        
+        # 退出后强制重定向清空状态
+        logout_redirect_js = """
+        <script>
+            setTimeout(function() {
+                window.parent.location.reload();
+            }, 300);
+        </script>
+        """
+        components.html(logout_redirect_js, height=0)
         st.rerun()
 
 # --- 精灵弹窗 ---
