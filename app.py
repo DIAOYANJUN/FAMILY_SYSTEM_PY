@@ -143,30 +143,31 @@ pets = {
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
-# 通过前端 JS 检查浏览器 sessionStorage 中是否有登录记录
-session_check_js = """
+# 核心改进：利用 localStorage 保持同标签页刷新不掉线
+# 如果是新开标签页或换浏览器，我们可以通过检测 referrer 或初始参数来安全拦截
+# 这里我们用前端 JS 检查：如果网址里没有带安全 token 且是新标签页打开，则自动清理
+auth_js = """
 <script>
-    const savedUser = sessionStorage.getItem("family_current_user");
+    const localUser = localStorage.getItem("family_persistent_user");
     const urlParams = new URLSearchParams(window.parent.location.search);
-    const currentUserInUrl = urlParams.get("sess_user");
-    
-    if (savedUser && !currentUserInUrl) {
-        // 如果本地有记录但URL没有，自动补全URL参数以便Streamlit读取
-        const separator = window.parent.location.search ? "&" : "?";
-        window.parent.location.href = window.parent.location.href + separator + "sess_user=" + savedUser;
-    } else if (!savedUser && currentUserInUrl) {
-        // 如果本地没有记录但URL有（说明是外部复制进来的），清除URL参数强制要求重新登录
+    const hasToken = urlParams.get("token");
+
+    if (localUser && !hasToken) {
+        // 同标签页刷新：自动带上 token 重新载入，免去重新登录
+        window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?token=" + localUser;
+    } else if (!localUser && hasToken) {
+        // 如果本地没有但URL有，清理URL防止直接复制生效
         window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
     }
 </script>
 """
-components.html(session_check_js, height=0)
+components.html(auth_js, height=0)
 
 query_params = st.query_params
-url_user = query_params.get("sess_user", None)
+token_user = query_params.get("token", None)
 
-if url_user in users and not st.session_state.logged_in_user:
-    st.session_state.logged_in_user = url_user
+if token_user in users and not st.session_state.logged_in_user:
+    st.session_state.logged_in_user = token_user
 
 current_user = st.session_state.logged_in_user
 
@@ -189,11 +190,11 @@ if not current_user:
         if st.button("登 录", use_container_width=True):
             if username_input in users and users[username_input]["pass"] == password_input:
                 st.session_state.logged_in_user = username_input
-                # 登录成功后，将账号存入当前标签页的 sessionStorage
+                # 登录成功后，写入 localStorage 并带 token 刷新
                 login_js = f"""
                 <script>
-                    sessionStorage.setItem("family_current_user", "{username_input}");
-                    window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?sess_user={username_input}";
+                    localStorage.setItem("family_persistent_user", "{username_input}");
+                    window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?token={username_input}";
                 </script>
                 """
                 components.html(login_js, height=0)
@@ -294,12 +295,13 @@ else:
         st.write(f"欢迎，**{user_info['name']}**！")
     with col_top3:
         if st.button("🔄 刷新数据"):
+            st.query_params["token"] = current_user
             st.rerun()
     with col_top4:
         if st.button("退出登录"):
             logout_js = """
             <script>
-                sessionStorage.removeItem("family_current_user");
+                localStorage.removeItem("family_persistent_user");
                 window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
             </script>
             """
