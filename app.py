@@ -6,13 +6,10 @@ from PIL import Image
 import io
 import base64
 from streamlit_drawable_canvas import st_canvas
-from streamlit_cookies_controller import CookieController
+import streamlit.components.v1 as components
 
 # 页面基础配置
 st.set_page_config(page_title="温馨家庭系统", page_icon="🏡", layout="wide")
-
-# 初始化 Cookie 控制器
-controller = CookieController()
 
 # 注入温馨粉色主题与悬浮精灵 CSS
 st.markdown("""
@@ -143,14 +140,30 @@ pets = {
     }
 }
 
-# --- 核心：通过 Cookie 维持登录状态 ---
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
-# 从浏览器 Cookie 中尝试获取登录凭证
-cookie_user = controller.get("family_logged_user")
-if cookie_user in users and not st.session_state.logged_in_user:
-    st.session_state.logged_in_user = cookie_user
+# --- 核心：通过前端 localStorage 实现 F5 刷新不掉登录 ---
+auth_sync_js = """
+<script>
+    const savedUser = localStorage.getItem("family_auth_user");
+    const urlParams = new URLSearchParams(window.parent.location.search);
+    const hasToken = urlParams.get("auth");
+
+    if (savedUser && !hasToken) {
+        // 如果本地有记录但网址没有（说明是F5刷新），自动补全参数并静默重新加载，实现不掉登录
+        const separator = window.parent.location.search ? "&" : "?";
+        window.parent.location.href = window.parent.location.href + separator + "auth=" + savedUser;
+    }
+</script>
+"""
+components.html(auth_sync_js, height=0)
+
+query_params = st.query_params
+url_token = query_params.get("auth", None)
+
+if url_token in users and not st.session_state.logged_in_user:
+    st.session_state.logged_in_user = url_token
 
 current_user = st.session_state.logged_in_user
 
@@ -173,9 +186,14 @@ if not current_user:
         if st.button("登 录", use_container_width=True):
             if username_input in users and users[username_input]["pass"] == password_input:
                 st.session_state.logged_in_user = username_input
-                # 写入 Cookie（有效期 7 天）
-                controller.set("family_logged_user", username_input, max_age=7*24*60*60)
-                st.rerun()
+                # 登录成功后，写入 localStorage 并带参数重载
+                login_js = f"""
+                <script>
+                    localStorage.setItem("family_auth_user", "{username_input}");
+                    window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?auth={username_input}";
+                </script>
+                """
+                components.html(login_js, height=0)
             else:
                 st.error("账号或密码错误！")
 else:
@@ -273,13 +291,18 @@ else:
         st.write(f"欢迎，**{user_info['name']}**！")
     with col_top3:
         if st.button("🔄 刷新数据"):
+            st.query_params["auth"] = current_user
             st.rerun()
     with col_top4:
         if st.button("退出登录"):
-            st.session_state.logged_in_user = None
-            # 清除 Cookie
-            controller.remove("family_logged_user")
-            st.rerun()
+            # 退出时清除 localStorage 并在前端重定向到纯净无参数网址（别人复制纯净网址就必须重新登录）
+            logout_js = """
+            <script>
+                localStorage.removeItem("family_auth_user");
+                window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
+            </script>
+            """
+            components.html(logout_js, height=0)
 
     st.markdown("---")
 
