@@ -8,6 +8,7 @@ from datetime import datetime
 from PIL import Image
 import io
 from streamlit_drawable_canvas import st_canvas
+from streamlit_cookies_controller import CookieController
 
 # ---------------- 0. 页面配置与 CSS 美化 ----------------
 st.set_page_config(
@@ -15,6 +16,9 @@ st.set_page_config(
     page_icon="🏡",
     layout="wide"
 )
+
+# 初始化加密 Cookie 控制器
+cookie_controller = CookieController()
 
 hide_streamlit_style = """
 <style>
@@ -172,16 +176,14 @@ pets = {
     }
 }
 
-# ---------------- 2. 登录状态与 URL 参数协同逻辑 ----------------
+# ---------------- 2. 稳如磐石的 Cookie 登录态维持逻辑 ----------------
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
-# 核心：通过读取 URL 的 ?user=参数 来维持同一浏览器内刷新不掉线
-query_params = st.query_params
-url_user = query_params.get("user", None)
-
-if url_user in users and not st.session_state.logged_in_user:
-    st.session_state.logged_in_user = url_user
+# 🌟 核心修改：从浏览器的加密 Cookie 中读取登录状态（不再暴露在网址里）
+cookie_user = cookie_controller.get("family_logged_user")
+if cookie_user in users and not st.session_state.logged_in_user:
+    st.session_state.logged_in_user = cookie_user
 
 current_user = st.session_state.logged_in_user
 
@@ -206,8 +208,10 @@ if not current_user:
             if submit:
                 if username_input in users and users[username_input]["pass"] == password_input:
                     st.session_state.logged_in_user = username_input
-                    # 登录成功后，将身份直接写入 URL 参数中，实现免密刷新
-                    st.query_params["user"] = username_input
+                    
+                    # 🌟 核心修改：登录成功后，将身份加密存入 Cookie（有效期 7 天）
+                    cookie_controller.set("family_logged_user", username_input, max_age=60*60*24*7)
+                    
                     st.success("登录成功！正在进入...")
                     st.rerun()
                 else:
@@ -274,14 +278,13 @@ with st.sidebar:
 
     st.markdown("---")
     if st.button("🔄 刷新并同步数据", type="primary", use_container_width=True):
-        st.query_params["user"] = current_user
         st.toast("已成功从云端仓库同步最新状态！", icon="✅")
         st.rerun()
 
     if st.button("🚪 退出登录", use_container_width=True):
+        # 🌟 核心修改：退出时安全销毁 Cookie
+        cookie_controller.remove("family_logged_user")
         st.session_state.logged_in_user = None
-        if "user" in st.query_params:
-            del st.query_params["user"]
         st.rerun()
 
 # 精灵档案弹窗逻辑
