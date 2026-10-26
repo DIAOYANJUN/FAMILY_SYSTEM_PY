@@ -6,6 +6,7 @@ from PIL import Image
 import io
 import base64
 from streamlit_drawable_canvas import st_canvas
+import streamlit.components.v1 as components
 
 # 页面基础配置
 st.set_page_config(page_title="温馨家庭系统", page_icon="🏡", layout="wide")
@@ -139,12 +140,35 @@ pets = {
     }
 }
 
-# 通过 URL 查询参数（query_params）无缝保持登录，F5刷新或点刷新按钮绝对不掉线
-query_params = st.query_params
-logged_in_user = query_params.get("user", None)
+if "logged_in_user" not in st.session_state:
+    st.session_state.logged_in_user = None
 
-if logged_in_user not in users:
-    logged_in_user = None
+# 前端 JS：利用 sessionStorage 自动同步同标签页的 F5 刷新
+session_bridge_js = """
+<script>
+    const savedUser = sessionStorage.getItem("family_session_user");
+    const urlParams = new URLSearchParams(window.parent.location.search);
+    const hasParam = urlParams.get("s_user");
+
+    if (savedUser && !hasParam) {
+        // 如果当前标签页有登录记录但网址没有，自动带上参数静默刷新，F5不掉登录
+        const separator = window.parent.location.search ? "&" : "?";
+        window.parent.location.href = window.parent.location.href + separator + "s_user=" + savedUser;
+    } else if (!savedUser && hasParam) {
+        // 如果是新标签页/换浏览器（sessionStorage为空），清空网址参数，强制要求重新登录
+        window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
+    }
+</script>
+"""
+components.html(session_bridge_js, height=0)
+
+query_params = st.query_params
+url_user = query_params.get("s_user", None)
+
+if url_user in users and not st.session_state.logged_in_user:
+    st.session_state.logged_in_user = url_user
+
+current_user = st.session_state.logged_in_user
 
 if "selected_pet" not in st.session_state:
     st.session_state.selected_pet = None
@@ -156,7 +180,7 @@ data = load_data()
 today_date_str = datetime.now().strftime("%Y-%m-%d")
 
 # --- 登录界面 ---
-if not logged_in_user:
+if not current_user:
     st.markdown("<h2 style='text-align: center; color: #ff7b93;'>🏡 温馨家庭系统登录</h2>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -164,12 +188,18 @@ if not logged_in_user:
         password_input = st.text_input("密码", type="password")
         if st.button("登 录", use_container_width=True):
             if username_input in users and users[username_input]["pass"] == password_input:
-                st.query_params["user"] = username_input
-                st.rerun()
+                st.session_state.logged_in_user = username_input
+                # 登录成功写入当前标签页的 sessionStorage
+                login_js = f"""
+                <script>
+                    sessionStorage.setItem("family_session_user", "{username_input}");
+                    window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?s_user={username_input}";
+                </script>
+                """
+                components.html(login_js, height=0)
             else:
                 st.error("账号或密码错误！")
 else:
-    current_user = logged_in_user
     user_info = users[current_user]
 
     # --- 精灵点击弹窗 ---
@@ -264,11 +294,17 @@ else:
         st.write(f"欢迎，**{user_info['name']}**！")
     with col_top3:
         if st.button("🔄 刷新数据"):
+            st.query_params["s_user"] = current_user
             st.rerun()
     with col_top4:
         if st.button("退出登录"):
-            st.query_params.clear()
-            st.rerun()
+            logout_js = """
+            <script>
+                sessionStorage.removeItem("family_session_user");
+                window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
+            </script>
+            """
+            components.html(logout_js, height=0)
 
     st.markdown("---")
 
