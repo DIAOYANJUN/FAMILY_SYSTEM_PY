@@ -151,32 +151,31 @@ pets = {
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
-# --- 前端 sessionStorage 绝对隔离机制 ---
-# 原理：同标签页刷新时，sessionStorage 有记录，自动带参数恢复；
-# 复制到新浏览器或新标签页时，sessionStorage 为空，不带参数，直接强制要求重新登录。
-session_guard_js = """
+# --- 前端 sessionStorage 守护脚本 ---
+# 核心：利用 sessionStorage 实现同标签页 F5 刷新不掉线，但换浏览器/新标签页时因为存储为空，强制拦截。
+session_sync_script = """
 <script>
-    const activeUser = sessionStorage.getItem("family_tab_user");
-    const urlParams = new URLSearchParams(window.parent.location.search);
-    const hasToken = urlParams.get("tab_auth");
+    const storedUser = sessionStorage.getItem("family_session_token");
+    const params = new URLSearchParams(window.parent.location.search);
+    const tokenInUrl = params.get("auth_t");
 
-    if (activeUser && !hasToken) {
-        // 同标签页刷新：自动在后台补全参数，实现不掉登录
-        const separator = window.parent.location.search ? "&" : "?";
-        window.parent.location.href = window.parent.location.href + separator + "tab_auth=" + activeUser;
-    } else if (!activeUser && hasToken) {
-        // 如果是新标签页/新浏览器（sessionStorage为空但网址带了参数），立刻清除网址参数拦截！
+    if (storedUser && !tokenInUrl) {
+        // 同标签页 F5 刷新：自动补全参数并静默重新加载，保持登录
+        const sep = window.parent.location.search ? "&" : "?";
+        window.parent.location.href = window.parent.location.href + sep + "auth_t=" + storedUser;
+    } else if (!storedUser && tokenInUrl) {
+        // 如果是换浏览器或新标签页（sessionStorage为空，但网址被强行带了参数），立刻抹掉参数拦截！
         window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
     }
 </script>
 """
-components.html(session_guard_js, height=0)
+components.html(session_sync_script, height=0)
 
 query_params = st.query_params
-url_token = query_params.get("tab_auth", None)
+url_auth = query_params.get("auth_t", None)
 
-if url_token in users and not st.session_state.logged_in_user:
-    st.session_state.logged_in_user = url_token
+if url_auth in users and not st.session_state.logged_in_user:
+    st.session_state.logged_in_user = url_auth
 
 current_user = st.session_state.logged_in_user
 
@@ -199,14 +198,14 @@ if not current_user:
         if st.button("登 录", use_container_width=True):
             if username_input in users and users[username_input]["pass"] == password_input:
                 st.session_state.logged_in_user = username_input
-                # 登录成功：写入当前标签页的 sessionStorage，并带参数重载
-                login_js = f"""
+                # 登录成功：写入 sessionStorage 并带参重载
+                login_success_js = f"""
                 <script>
-                    sessionStorage.setItem("family_tab_user", "{username_input}");
-                    window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?tab_auth={username_input}";
+                    sessionStorage.setItem("family_session_token", "{username_input}");
+                    window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?auth_t={username_input}";
                 </script>
                 """
-                components.html(login_js, height=0)
+                components.html(login_success_js, height=0)
             else:
                 st.error("账号或密码错误！")
 else:
@@ -271,7 +270,7 @@ else:
 
     # --- 左侧栏：精灵照片展示与档案入口 ---
     with st.sidebar:
-        st.markdown("### 🌟 🌱 家庭守护精灵")
+        st.markdown("### 🌟 家庭守护精灵")
         st.caption("点击下方按钮查看精灵档案与历史语录：")
         
         if os.path.exists("lulu.jpeg"):
@@ -304,13 +303,14 @@ else:
         st.write(f"欢迎，**{user_info['name']}**！")
     with col_top3:
         if st.button("🔄 刷新数据"):
-            st.query_params["tab_auth"] = current_user
+            st.query_params["auth_t"] = current_user
             st.rerun()
     with col_top4:
         if st.button("退出登录"):
+            # 退出登录：清除 sessionStorage 并干净重定向
             logout_js = """
             <script>
-                sessionStorage.removeItem("family_tab_user");
+                sessionStorage.removeItem("family_session_token");
                 window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
             </script>
             """
