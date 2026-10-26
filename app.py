@@ -84,6 +84,7 @@ st.markdown("""
 DATA_FILE = "family_data.json"
 
 def load_data():
+    # 每次调用都实时从磁盘读取最新云端数据，确保多人生日、打卡、留言实时同步
     if not os.path.exists(DATA_FILE):
         initial = {
             "checkins": {},
@@ -143,27 +144,36 @@ pets = {
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
-# --- 核心：通过前端 localStorage 实现 F5 刷新不掉登录 ---
-auth_sync_js = """
+# --- 前端会话桥接：F5刷新同标签页不掉登录，新标签页自动清空 ---
+session_sync_js = """
 <script>
-    const savedUser = localStorage.getItem("family_auth_user");
+    const savedUser = sessionStorage.getItem("family_active_user");
     const urlParams = new URLSearchParams(window.parent.location.search);
-    const hasToken = urlParams.get("auth");
+    const hasParam = urlParams.get("s_token");
 
-    if (savedUser && !hasToken) {
-        // 如果本地有记录但网址没有（说明是F5刷新），自动补全参数并静默重新加载，实现不掉登录
+    if (savedUser && !hasParam) {
+        // 同标签页 F5 刷新：自动带上 token 静默恢复
         const separator = window.parent.location.search ? "&" : "?";
-        window.parent.location.href = window.parent.location.href + separator + "auth=" + savedUser;
+        window.parent.location.href = window.parent.location.href + separator + "s_token=" + savedUser;
     }
 </script>
 """
-components.html(auth_sync_js, height=0)
+components.html(session_sync_js, height=0)
 
 query_params = st.query_params
-url_token = query_params.get("auth", None)
+url_token = query_params.get("s_token", None)
 
 if url_token in users and not st.session_state.logged_in_user:
     st.session_state.logged_in_user = url_token
+    # 登录后立即在浏览器地址栏“无痕”清理掉 token 露出干净网址，防止复制时带上凭证
+    components.html("""
+        <script>
+            if (window.parent.history.replaceState) {
+                const cleanUrl = window.parent.location.origin + window.parent.location.pathname;
+                window.parent.history.replaceState({path: cleanUrl}, '', cleanUrl);
+            }
+        </script>
+    """, height=0)
 
 current_user = st.session_state.logged_in_user
 
@@ -186,11 +196,11 @@ if not current_user:
         if st.button("登 录", use_container_width=True):
             if username_input in users and users[username_input]["pass"] == password_input:
                 st.session_state.logged_in_user = username_input
-                # 登录成功后，写入 localStorage 并带参数重载
+                # 写入 sessionStorage 并带参数重载
                 login_js = f"""
                 <script>
-                    localStorage.setItem("family_auth_user", "{username_input}");
-                    window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?auth={username_input}";
+                    sessionStorage.setItem("family_active_user", "{username_input}");
+                    window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?s_token={username_input}";
                 </script>
                 """
                 components.html(login_js, height=0)
@@ -291,14 +301,13 @@ else:
         st.write(f"欢迎，**{user_info['name']}**！")
     with col_top3:
         if st.button("🔄 刷新数据"):
-            st.query_params["auth"] = current_user
             st.rerun()
     with col_top4:
+        # 退出登录按钮：使用稳妥的 JS 清除 sessionStorage 并重定向到干净页面
         if st.button("退出登录"):
-            # 退出时清除 localStorage 并在前端重定向到纯净无参数网址（别人复制纯净网址就必须重新登录）
             logout_js = """
             <script>
-                localStorage.removeItem("family_auth_user");
+                sessionStorage.removeItem("family_active_user");
                 window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
             </script>
             """
