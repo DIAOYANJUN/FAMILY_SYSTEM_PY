@@ -6,6 +6,7 @@ from PIL import Image
 import io
 import base64
 from streamlit_drawable_canvas import st_canvas
+import streamlit.components.v1 as components
 
 # 页面基础配置
 st.set_page_config(page_title="温馨家庭系统", page_icon="🏡", layout="wide")
@@ -83,7 +84,6 @@ st.markdown("""
 DATA_FILE = "family_data.json"
 
 def load_data():
-    # 每次强制从本地/云端硬盘读取最新的 family_data.json，确保多设备数据互通
     if not os.path.exists(DATA_FILE):
         initial = {
             "checkins": {},
@@ -148,12 +148,37 @@ pets = {
     }
 }
 
-# --- 登录与刷新保持机制 ---
-query_params = st.query_params
-logged_in_user = query_params.get("session_user", None)
+if "logged_in_user" not in st.session_state:
+    st.session_state.logged_in_user = None
 
-if logged_in_user not in users:
-    logged_in_user = None
+# --- 前端 sessionStorage 绝对隔离机制 ---
+# 原理：同标签页刷新时，sessionStorage 有记录，自动带参数恢复；
+# 复制到新浏览器或新标签页时，sessionStorage 为空，不带参数，直接强制要求重新登录。
+session_guard_js = """
+<script>
+    const activeUser = sessionStorage.getItem("family_tab_user");
+    const urlParams = new URLSearchParams(window.parent.location.search);
+    const hasToken = urlParams.get("tab_auth");
+
+    if (activeUser && !hasToken) {
+        // 同标签页刷新：自动在后台补全参数，实现不掉登录
+        const separator = window.parent.location.search ? "&" : "?";
+        window.parent.location.href = window.parent.location.href + separator + "tab_auth=" + activeUser;
+    } else if (!activeUser && hasToken) {
+        // 如果是新标签页/新浏览器（sessionStorage为空但网址带了参数），立刻清除网址参数拦截！
+        window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
+    }
+</script>
+"""
+components.html(session_guard_js, height=0)
+
+query_params = st.query_params
+url_token = query_params.get("tab_auth", None)
+
+if url_token in users and not st.session_state.logged_in_user:
+    st.session_state.logged_in_user = url_token
+
+current_user = st.session_state.logged_in_user
 
 if "selected_pet" not in st.session_state:
     st.session_state.selected_pet = None
@@ -161,12 +186,11 @@ if "selected_pet" not in st.session_state:
 if "canvas_reset_counter" not in st.session_state:
     st.session_state.canvas_reset_counter = 0
 
-# 每次页面加载时，实时从云端仓库读取最新数据
 data = load_data()
 today_date_str = datetime.now().strftime("%Y-%m-%d")
 
 # --- 登录界面 ---
-if not logged_in_user:
+if not current_user:
     st.markdown("<h2 style='text-align: center; color: #ff7b93;'>🏡 温馨家庭系统登录</h2>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -174,12 +198,18 @@ if not logged_in_user:
         password_input = st.text_input("密码", type="password")
         if st.button("登 录", use_container_width=True):
             if username_input in users and users[username_input]["pass"] == password_input:
-                st.query_params["session_user"] = username_input
-                st.rerun()
+                st.session_state.logged_in_user = username_input
+                # 登录成功：写入当前标签页的 sessionStorage，并带参数重载
+                login_js = f"""
+                <script>
+                    sessionStorage.setItem("family_tab_user", "{username_input}");
+                    window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?tab_auth={username_input}";
+                </script>
+                """
+                components.html(login_js, height=0)
             else:
                 st.error("账号或密码错误！")
 else:
-    current_user = logged_in_user
     user_info = users[current_user]
 
     # --- 精灵点击弹窗 ---
@@ -241,7 +271,7 @@ else:
 
     # --- 左侧栏：精灵照片展示与档案入口 ---
     with st.sidebar:
-        st.markdown("### 🌟 家庭守护精灵")
+        st.markdown("### 🌟 🌱 家庭守护精灵")
         st.caption("点击下方按钮查看精灵档案与历史语录：")
         
         if os.path.exists("lulu.jpeg"):
@@ -273,14 +303,18 @@ else:
     with col_top2:
         st.write(f"欢迎，**{user_info['name']}**！")
     with col_top3:
-        # 点击刷新数据：带上当前用户参数重新加载，F5 刷新绝不掉登录，并立刻从文件同步最新打卡和留言
         if st.button("🔄 刷新数据"):
-            st.query_params["session_user"] = current_user
+            st.query_params["tab_auth"] = current_user
             st.rerun()
     with col_top4:
         if st.button("退出登录"):
-            st.query_params.clear()
-            st.rerun()
+            logout_js = """
+            <script>
+                sessionStorage.removeItem("family_tab_user");
+                window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
+            </script>
+            """
+            components.html(logout_js, height=0)
 
     st.markdown("---")
 
