@@ -6,6 +6,7 @@ from PIL import Image
 import io
 import base64
 from streamlit_drawable_canvas import st_canvas
+import streamlit.components.v1 as components
 
 # 页面基础配置
 st.set_page_config(page_title="温馨家庭系统", page_icon="🏡", layout="wide")
@@ -139,14 +140,31 @@ pets = {
     }
 }
 
-# 智能双重校验：优先从 URL 参数恢复，其次从 session_state 恢复
-query_params = st.query_params
-url_user = query_params.get("user", None)
-
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
-# 如果 URL 里有临时登录凭证，自动同步给内存
+# 通过前端 JS 检查浏览器 sessionStorage 中是否有登录记录
+session_check_js = """
+<script>
+    const savedUser = sessionStorage.getItem("family_current_user");
+    const urlParams = new URLSearchParams(window.parent.location.search);
+    const currentUserInUrl = urlParams.get("sess_user");
+    
+    if (savedUser && !currentUserInUrl) {
+        // 如果本地有记录但URL没有，自动补全URL参数以便Streamlit读取
+        const separator = window.parent.location.search ? "&" : "?";
+        window.parent.location.href = window.parent.location.href + separator + "sess_user=" + savedUser;
+    } else if (!savedUser && currentUserInUrl) {
+        // 如果本地没有记录但URL有（说明是外部复制进来的），清除URL参数强制要求重新登录
+        window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
+    }
+</script>
+"""
+components.html(session_check_js, height=0)
+
+query_params = st.query_params
+url_user = query_params.get("sess_user", None)
+
 if url_user in users and not st.session_state.logged_in_user:
     st.session_state.logged_in_user = url_user
 
@@ -171,8 +189,14 @@ if not current_user:
         if st.button("登 录", use_container_width=True):
             if username_input in users and users[username_input]["pass"] == password_input:
                 st.session_state.logged_in_user = username_input
-                st.query_params["user"] = username_input  # 写入 URL 供刷新使用
-                st.rerun()
+                # 登录成功后，将账号存入当前标签页的 sessionStorage
+                login_js = f"""
+                <script>
+                    sessionStorage.setItem("family_current_user", "{username_input}");
+                    window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?sess_user={username_input}";
+                </script>
+                """
+                components.html(login_js, height=0)
             else:
                 st.error("账号或密码错误！")
 else:
@@ -269,15 +293,17 @@ else:
     with col_top2:
         st.write(f"欢迎，**{user_info['name']}**！")
     with col_top3:
-        # 点击刷新按钮时，确保持续带上当前用户的参数进行刷新
         if st.button("🔄 刷新数据"):
-            st.query_params["user"] = current_user
             st.rerun()
     with col_top4:
         if st.button("退出登录"):
-            st.session_state.logged_in_user = None
-            st.query_params.clear()  # 清除 URL 参数，别人复制网址时必须重新登录
-            st.rerun()
+            logout_js = """
+            <script>
+                sessionStorage.removeItem("family_current_user");
+                window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
+            </script>
+            """
+            components.html(logout_js, height=0)
 
     st.markdown("---")
 
