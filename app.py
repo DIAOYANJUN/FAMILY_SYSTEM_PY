@@ -10,15 +10,10 @@ from streamlit_drawable_canvas import st_canvas
 # 页面基础配置
 st.set_page_config(page_title="温馨家庭系统", page_icon="🏡", layout="wide")
 
-# 注入与截图完全一致的温馨粉色主题与左右悬浮宠物 CSS
+# 注入温馨粉色主题与左右悬浮宠物 CSS
 st.markdown("""
     <style>
-        /* 全局背景色 */
-        .stApp {
-            background-color: #fff9fa;
-        }
-        
-        /* 左右两侧悬浮宠物样式 */
+        .stApp { background-color: #fff9fa; }
         .side-decoration {
             position: fixed;
             top: 50%;
@@ -53,11 +48,8 @@ st.markdown("""
             font-weight: bold;
             margin-top: 4px;
         }
-        @media (max-width: 1200px) {
-            .side-decoration { display: none; }
-        }
+        @media (max-width: 1200px) { .side-decoration { display: none; } }
 
-        /* 顶部 Header 样式 */
         .custom-header {
             background: white;
             padding: 15px 25px;
@@ -69,8 +61,6 @@ st.markdown("""
             margin-bottom: 25px;
             border: 1px solid #ffe6eb;
         }
-
-        /* 按钮美化 */
         .stButton>button {
             background-color: #ff7b93;
             color: white;
@@ -94,6 +84,7 @@ def load_data():
         initial = {
             "checkins": {},
             "photos": [],
+            "messages": [],
             "mailboxes": {"baba": [], "mama": [], "erzi": [], "meimei": []}
         }
         save_data(initial)
@@ -112,15 +103,18 @@ users = {
     "meimei": {"name": "妹妹", "role": "妹妹", "birthday": "01-09", "emoji": "👧", "pass": "meimei123456"}
 }
 
-# 根目录下的宠物图片
+# 宠物详细档案（支持点击弹窗展示照片和介绍）
 pets = {
-    "lulu": {"name": "噜噜", "img": "lulu.jpeg", "desc": "我是噜噜！家里最活泼的小可爱~"},
-    "bubu": {"name": "布布", "img": "bubu.jpeg", "desc": "我是布布！性格温顺又粘人~"},
-    "yier": {"name": "一二", "img": "yier.jpeg", "desc": "我是一二！元气满满的快乐源泉~"}
+    "lulu": {"name": "噜噜", "img": "lulu.jpeg", "desc": "我是噜噜！家里最活泼的小可爱，每天负责卖萌和迎接大家回家，最喜欢吃好吃的零食！🐾"},
+    "bubu": {"name": "布布", "img": "bubu.jpeg", "desc": "我是布布！性格温顺又粘人，是大家的贴心小棉袄，最喜欢在阳光下懒洋洋地睡大觉。💤"},
+    "yier": {"name": "一二", "img": "yier.jpeg", "desc": "我是一二！行事雷厉风行，是家庭里的快乐源泉，每天都在元气满满地巡视领地！⚡"}
 }
 
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
+
+if "selected_pet" not in st.session_state:
+    st.session_state.selected_pet = None
 
 data = load_data()
 
@@ -141,12 +135,49 @@ else:
     current_user = st.session_state.logged_in_user
     user_info = users[current_user]
 
-    # --- 渲染左右两侧悬浮宠物（与截图一致） ---
-    # 左侧：噜噜、布布
+    # --- 宠物点击弹窗（当点击左侧或右侧宠物时触发） ---
+    if st.session_state.selected_pet:
+        p_key = st.session_state.selected_pet
+        p_info = pets[p_key]
+        st.markdown(f"""
+            <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; justify-content: center; align-items: center;">
+                <div style="background: white; padding: 30px; border-radius: 20px; text-align: center; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+                    <h2>🐾 {p_info['name']} 的专属档案</h2>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # 使用 Streamlit 原生弹窗组件展示图片与介绍
+        @st.dialog(f"🐾 宠物档案：{p_info['name']}")
+        def pet_dialog():
+            if os.path.exists(p_info["img"]):
+                st.image(p_info["img"], width=200)
+            st.write(p_info["desc"])
+            if st.button("关闭档案"):
+                st.session_state.selected_pet = None
+                st.rerun()
+        pet_dialog()
+
+    # --- 渲染左右两侧悬浮宠物（可点击） ---
     lulu_b64 = base64.b64encode(open(pets["lulu"]["img"], "rb").read()).decode() if os.path.exists(pets["lulu"]["img"]) else ""
     bubu_b64 = base64.b64encode(open(pets["bubu"]["img"], "rb").read()).decode() if os.path.exists(pets["bubu"]["img"]) else ""
     yier_b64 = base64.b64encode(open(pets["yier"]["img"], "rb").read()).decode() if os.path.exists(pets["yier"]["img"]) else ""
 
+    # 使用 Streamlit 按钮包装宠物头像实现点击事件
+    with st.sidebar:
+        st.markdown("### 🐾 宠物互动专区")
+        st.caption("点击下方宠物查看详细档案：")
+        if st.button("🐾 查看 噜噜"):
+            st.session_state.selected_pet = "lulu"
+            st.rerun()
+        if st.button("🐾 查看 布布"):
+            st.session_state.selected_pet = "bubu"
+            st.rerun()
+        if st.button("🐾 查看 一二"):
+            st.session_state.selected_pet = "yier"
+            st.rerun()
+
+    # 悬浮头像展示（页面两侧）
     st.markdown(f"""
         <div class="side-decoration left-side">
             <div class="side-pet-box">
@@ -167,161 +198,188 @@ else:
     """, unsafe_allow_html=True)
 
     # --- 顶部 Header ---
-    st.markdown(f"""
-        <div class="custom-header">
-            <h2 style='color: #ff7b93; margin:0; font-size: 1.4rem;'>🏡 温馨家庭系统 (云端共享)</h2>
-            <div style='display: flex; align-items: center; gap: 15px;'>
-                <span style='font-size: 0.95rem; color: #555;'>欢迎，{user_info['name']}！</span>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # 顶部右侧功能按键区
-    col_top1, col_top2 = st.columns([10, 1])
+    col_top1, col_top2, col_top3 = st.columns([6, 2, 1])
     with col_top1:
-        st.write("")
+        st.markdown("<h2 style='color: #ff7b93; margin:0;'>🏡 温馨家庭系统 (云端共享)</h2>", unsafe_allow_html=True)
     with col_top2:
+        st.write(f"欢迎，**{user_info['name']}**！")
+    with col_top3:
         if st.button("退出登录"):
             st.session_state.logged_in_user = None
             st.rerun()
 
-    # --- 左右双列布局（与截图结构完全对应） ---
+    st.markdown("---")
+
+    # --- 左右双列布局 ---
     left_col, right_col = st.columns(2)
 
     with left_col:
-        # 1. 生日倒计时卡片
-        with st.container():
-            st.markdown("### 🎂 家人生日倒计时")
-            today = datetime.now()
-            for u_key, u_val in users.items():
-                m, d = map(int, u_val["birthday"].split("-"))
-                b_day = datetime(today.year, m, d)
-                if b_day.date() < today.date():
-                    b_day = datetime(today.year + 1, m, d)
-                days_left = (b_day - today).days
-                status = "🎉 今天生日！" if days_left == 0 else f"还有 {days_left} 天"
-                st.info(f"{u_val['emoji']} **{u_val['name']}** ({u_val['birthday'].replace('-', '月')}日)  ——  **{status}**")
+        # 1. 生日倒计时
+        st.markdown("### 🎂 家人生日倒计时")
+        today = datetime.now()
+        for u_key, u_val in users.items():
+            m, d = map(int, u_val["birthday"].split("-"))
+            b_day = datetime(today.year, m, d)
+            if b_day.date() < today.date():
+                b_day = datetime(today.year + 1, m, d)
+            days_left = (b_day - today).days
+            status = "🎉 今天生日！" if days_left == 0 else f"还有 {days_left} 天"
+            st.info(f"{u_val['emoji']} **{u_val['name']}** ({u_val['birthday'].replace('-', '月')}日)  ——  **{status}**")
 
         st.write("")
 
-        # 2. 个人专属信箱卡片
-        with st.container():
-            st.markdown(f"### 📬 我的专属信箱 ({user_info['name']})")
-            my_mailbox = data["mailboxes"].get(current_user, [])
-            if not my_mailbox:
-                st.caption("信箱空空的，快让家人送你一幅画吧！")
-            else:
-                for mail in my_mailbox:
-                    st.image(mail["url"], caption=f"来自：{mail['sender']}")
-                    if st.button("删除这封信", key=f"del_mail_{mail['id']}"):
-                        data["mailboxes"][current_user] = [m for m in my_mailbox if m["id"] != mail["id"]]
-                        save_data(data)
-                        st.rerun()
+        # 2. 个人专属信箱
+        st.markdown(f"### 📬 我的专属信箱 ({user_info['name']})")
+        my_mailbox = data["mailboxes"].get(current_user, [])
+        if not my_mailbox:
+            st.caption("信箱空空的，快让家人送你一幅画吧！")
+        else:
+            for mail in my_mailbox:
+                st.image(mail["url"], caption=f"来自：{mail['sender']}")
+                if st.button("删除这封信", key=f"del_mail_{mail['id']}"):
+                    data["mailboxes"][current_user] = [m for m in my_mailbox if m["id"] != mail["id"]]
+                    save_data(data)
+                    st.rerun()
+
+        st.write("")
+
+        # 3. 💬 家庭留言板（新增功能）
+        st.markdown("### 💬 全家留言板")
+        new_msg = st.text_input("写下你想对家人说的话...", key="msg_input")
+        if st.button("发布留言"):
+            if new_msg.strip():
+                if "messages" not in data:
+                    data["messages"] = []
+                data["messages"].insert(0, {
+                    "id": int(datetime.now().timestamp() * 1000),
+                    "sender": user_info["name"],
+                    "text": new_msg,
+                    "time": datetime.now().strftime("%m-%d %H:%M")
+                })
+                save_data(data)
+                st.success("留言发表成功！")
+                st.rerun()
+        
+        # 展示留言
+        messages = data.get("messages", [])
+        if not messages:
+            st.caption("暂无留言，快来抢沙发吧~")
+        else:
+            for msg in messages:
+                st.markdown(f"""
+                    <div style="background: white; padding: 10px 15px; border-radius: 10px; margin-bottom: 8px; border-left: 4px solid #ff7b93; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+                        <b>{msg['sender']}</b> <span style="font-size: 0.75rem; color: #999; float: right;">{msg['time']}</span><br>
+                        <span style="color: #333; font-size: 0.95rem;">{msg['text']}</span>
+                    </div>
+                """, unsafe_allow_html=True)
 
     with right_col:
-        # 3. 家庭涂鸦与赠送板卡片
-        with st.container():
-            st.markdown("### 🎨 家庭涂鸦与赠送板")
-            stroke_color = st.color_picker("颜色", "#ff7b93", label_visibility="collapsed")
-            
-            # 画布
-            canvas_result = st_canvas(
-                fill_color="rgba(255, 255, 255, 0)",
-                stroke_width=3,
-                stroke_color=stroke_color,
-                background_color="#ffffff",
-                height=180,
-                width=420,
-                drawing_mode="freedraw",
-                key="canvas",
-            )
-            
-            rc1, rc2 = st.columns([2, 1])
-            with rc1:
-                recipient = st.selectbox("选择对象", [
-                    ("all", "公开到全家相册 🌍"),
-                    ("baba", "赠送给：爸爸 👨"),
-                    ("mama", "赠送给：妈妈 👩"),
-                    ("erzi", "赠送给：儿子 👦"),
-                    ("meimei", "赠送给：妹妹 👧")
-                ], format_func=lambda x: x[1], label_visibility="collapsed")[0]
-            with rc2:
-                if st.button("发送/保存 💌", use_container_width=True):
-                    if canvas_result.image_data is not None:
-                        img_arr = canvas_result.image_data
-                        img = Image.fromarray(img_arr.astype('uint8'), 'RGBA').convert('RGB')
-                        buffered = io.BytesIO()
-                        img.save(buffered, format="JPEG")
-                        img_str = "data:image/jpeg;base64," + base64.b64encode(buffered.getvalue()).decode()
-                        
-                        item = {"id": int(datetime.now().timestamp() * 1000), "url": img_str, "sender": user_info["name"]}
-                        if recipient == 'all':
-                            data["photos"].insert(0, item)
-                            st.success("已分享到全家相册！")
-                        else:
-                            data["mailboxes"][recipient].insert(0, item)
-                            st.success(f"已放入 [{users[recipient]['name']}] 的信箱！")
-                        save_data(data)
-                        st.rerun()
+        # 4. 家庭涂鸦与赠送板（加大尺寸并增加清除按钮）
+        st.markdown("### 🎨 家庭涂鸦与赠送板")
+        stroke_color = st.color_picker("画笔颜色", "#ff7b93")
+        
+        # 画布尺寸加大 (宽 450, 高 240)
+        canvas_result = st_canvas(
+            fill_color="rgba(255, 255, 255, 0)",
+            stroke_width=4,
+            stroke_color=stroke_color,
+            background_color="#ffffff",
+            height=240,
+            width=450,
+            drawing_mode="freedraw",
+            key="canvas",
+        )
+        
+        bc1, bc2 = st.columns([1, 1])
+        with bc1:
+            # 清除按钮提示
+            st.caption("💡 如果画错可以在上方重新绘制")
+        with bc2:
+            pass
 
-        st.write("")
+        recipient = st.selectbox("选择发送对象", [
+            ("all", "公开到全家相册 🌍"),
+            ("baba", "赠送给：爸爸 👨"),
+            ("mama", "赠送给：妈妈 👩"),
+            ("erzi", "赠送给：儿子 👦"),
+            ("meimei", "赠送给：妹妹 👧")
+        ], format_func=lambda x: x[1])
 
-        # 4. 每日全家打卡卡片
-        with st.container():
-            st.markdown("### ✨ 每日全家打卡")
-            today_str = today.strftime("%Y-%m-%d")
-            checkins = data["checkins"]
-
-            for u_key, u_val in users.items():
-                if u_key not in checkins:
-                    checkins[u_key] = {"streak": 0, "last_date": ""}
-                
-                c_data = checkins[u_key]
-                checked_today = (c_data.get("last_date") == today_str)
-
-                cc1, cc2, cc3 = st.columns([2, 2, 2])
-                cc1.write(f"**{u_val['name']}**")
-                cc2.write(f"🔥 连续 {c_data['streak']} 天")
-                
-                if u_key == current_user:
-                    if not checked_today:
-                        if cc3.button("点击打卡", key=f"check_{u_key}"):
-                            c_data["checkedToday"] = True
-                            c_data["streak"] += 1
-                            c_data["last_date"] = today_str
-                            checkins[u_key] = c_data
-                            save_data(data)
-                            st.success("打卡成功！")
-                            st.rerun()
-                    else:
-                        cc3.button("今日已打卡", disabled=True, key=f"check_{u_key}")
-                else:
-                    cc3.write("已打卡" if checked_today else "未打卡")
-
-        st.write("")
-
-        # 5. 公共家庭相册卡片
-        with st.container():
-            st.markdown("### 📸 公共家庭相册")
-            uploaded_file = st.file_uploader("上传照片到全家相册", type=["jpg", "png", "jpeg"], label_visibility="collapsed")
-            if uploaded_file is not None:
-                image = Image.open(uploaded_file)
+        if st.button("保存并发送画作 💌", use_container_width=True):
+            if canvas_result.image_data is not None:
+                img_arr = canvas_result.image_data
+                img = Image.fromarray(img_arr.astype('uint8'), 'RGBA').convert('RGB')
                 buffered = io.BytesIO()
-                image.save(buffered, format="JPEG")
+                img.save(buffered, format="JPEG")
                 img_str = "data:image/jpeg;base64," + base64.b64encode(buffered.getvalue()).decode()
                 
-                data["photos"].insert(0, {"id": int(datetime.now().timestamp() * 1000), "url": img_str, "uploader": user_info["name"]})
+                item = {"id": int(datetime.now().timestamp() * 1000), "url": img_str, "sender": user_info["name"]}
+                rec_key = recipient[0]
+                if rec_key == 'all':
+                    data["photos"].insert(0, item)
+                    st.success("已成功保存并分享到全家相册！🌍")
+                else:
+                    data["mailboxes"][rec_key].insert(0, item)
+                    st.success(f"已成功发送到 [{users[rec_key]['name']}] 的专属信箱！💌")
                 save_data(data)
-                st.success("上传成功！")
                 st.rerun()
 
-            photos = data["photos"]
-            if not photos:
-                st.caption("暂无照片")
-            else:
-                for p in photos:
-                    st.image(p["url"], caption=f"上传者：{p.get('uploader', '家人')}")
-                    if st.button("删除照片", key=f"del_photo_{p['id']}"):
-                        data["photos"] = [item for item in photos if item["id"] != p["id"]]
+        st.write("")
+
+        # 5. 每日全家打卡
+        st.markdown("### ✨ 每日全家打卡")
+        today_str = today.strftime("%Y-%m-%d")
+        checkins = data["checkins"]
+
+        for u_key, u_val in users.items():
+            if u_key not in checkins:
+                checkins[u_key] = {"streak": 0, "last_date": ""}
+            
+            c_data = checkins[u_key]
+            checked_today = (c_data.get("last_date") == today_str)
+
+            cc1, cc2, cc3 = st.columns([2, 2, 2])
+            cc1.write(f"**{u_val['name']}**")
+            cc2.write(f"🔥 连续 {c_data['streak']} 天")
+            
+            if u_key == current_user:
+                if not checked_today:
+                    if cc3.button("点击打卡", key=f"check_{u_key}"):
+                        c_data["checkedToday"] = True
+                        c_data["streak"] += 1
+                        c_data["last_date"] = today_str
+                        checkins[u_key] = c_data
                         save_data(data)
+                        st.success("打卡成功！")
                         st.rerun()
+                else:
+                    cc3.button("今日已打卡", disabled=True, key=f"check_{u_key}")
+            else:
+                cc3.write("已打卡" if checked_today else "未打卡")
+
+        st.write("")
+
+        # 6. 公共家庭相册
+        st.markdown("### 📸 公共家庭相册")
+        uploaded_file = st.file_uploader("上传照片到全家相册", type=["jpg", "png", "jpeg"])
+        if uploaded_file is not None:
+            image = Image.open(uploaded_file)
+            buffered = io.BytesIO()
+            image.save(buffered, format="JPEG")
+            img_str = "data:image/jpeg;base64," + base64.b64encode(buffered.getvalue()).decode()
+            
+            data["photos"].insert(0, {"id": int(datetime.now().timestamp() * 1000), "url": img_str, "uploader": user_info["name"]})
+            save_data(data)
+            st.success("上传成功！")
+            st.rerun()
+
+        photos = data["photos"]
+        if not photos:
+            st.caption("暂无照片")
+        else:
+            for p in photos:
+                st.image(p["url"], caption=p.get("uploader", "家人"))
+                if st.button("删除照片", key=f"del_photo_{p['id']}"):
+                    data["photos"] = [item for item in photos if item["id"] != p["id"]]
+                    save_data(data)
+                    st.rerun()
